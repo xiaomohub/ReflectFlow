@@ -1,47 +1,56 @@
-# 个人复盘系统
+<p align="center">
+  <h1 align="center">ReflectFlow</h1>
+  <p align="center"><i>Collect · Filter · Decide · Review</i></p>
+  <p align="center">
+    A personal reflection system that helps you cut through information noise,
+    make better decisions, and review them systematically.
+  </p>
+</p>
 
-> 信息收集 → AI 过滤 → 决策管理 → 定期复盘
+---
 
-一款面向个人的信息处理与决策复盘工具。通过订阅信息源（RSS/网页），结合 AI 进行内容过滤和相关性评分，帮你从信息过载中提炼出真正值得关注的内容，转为可执行的决策，并定期回顾复盘。
+## Overview
 
-## 功能概览
+ReflectFlow is a full-stack personal knowledge and decision management system. It helps you:
 
-| 模块 | 功能 |
-|------|------|
-| **信息源管理** | 添加 RSS / 网页等订阅源，定时抓取 |
-| **文章收件箱** | AI 自动评分排序，标记已读/星标 |
-| **关注领域** | 设定你的兴趣方向，驱动 AI 过滤 |
-| **决策管理** | 基于文章创建决策，记录选项与分析 |
-| **决策复盘** | 定期回顾决策结果，评估 outcome |
-| **AI 辅助** | 接入 LLM 提供决策建议和内容分析 |
+1. **Collect** — Subscribe to RSS feeds, web pages, and other sources to aggregate information in one place.
+2. **Filter** — Use AI (LLM) to automatically score and rank articles by relevance to your interests.
+3. **Decide** — Turn important articles into structured decisions with options, pros/cons, and AI-assisted analysis.
+4. **Review** — Schedule periodic reviews of past decisions, track outcomes, and learn from experience.
 
-## 技术栈
+It's designed for independent thinkers, makers, and lifelong learners who want to turn information overload into actionable wisdom.
 
-| 层 | 技术 |
-|----|------|
-| 前端 | React 19 + TypeScript + Vite 8 + TailwindCSS 4 + React Router 7 |
-| 后端 | Python FastAPI + SQLAlchemy + SQLite |
-| AI | OpenAI 兼容 API（可对接 DeepSeek / Qwen / GPT 等） |
+---
 
-## 快速启动
+## Tech Stack
 
-### 前置要求
+| Layer   | Technology                                                      |
+| ------- | --------------------------------------------------------------- |
+| Frontend | React 19 + TypeScript + Vite 8 + TailwindCSS 4 + React Router 7 |
+| Backend | Python FastAPI + SQLAlchemy + SQLite                             |
+| AI      | OpenAI-compatible API (DeepSeek / GPT / Qwen, etc.)             |
+
+---
+
+## Quick Start
+
+### Prerequisites
 
 - Python 3.10+
 - Node.js 18+
 
-### 一键启动
+### One-Click Launch
 
-直接双击运行 `start.bat`，脚本会自动：
+Double-click `start.bat` — it will automatically:
 
-1. 创建 Python 虚拟环境并安装后端依赖
-2. 安装前端 npm 依赖
-3. 启动后端服务 (http://localhost:8000)
-4. 启动前端服务 (http://localhost:5173)
+1. Create a Python virtual environment and install backend dependencies.
+2. Install frontend npm dependencies.
+3. Start the backend at `http://localhost:8000`.
+4. Start the frontend at `http://localhost:5173`.
 
-### 手动启动
+### Manual Launch
 
-**后端：**
+**Backend:**
 
 ```bash
 cd backend
@@ -50,7 +59,7 @@ venv\Scripts\pip install -r requirements.txt
 venv\Scripts\python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**前端：**
+**Frontend:**
 
 ```bash
 cd frontend
@@ -58,11 +67,13 @@ npm install
 npm run dev
 ```
 
-启动后浏览器打开 **http://localhost:5173** 即可使用。
+Open **http://localhost:5173** in your browser.
 
-## 配置 AI
+---
 
-复制 `backend/.env.example` 为 `backend/.env`，填入你的 API 信息：
+## Configuration: AI Provider
+
+Copy `backend/.env.example` to `backend/.env` and fill in your API credentials:
 
 ```env
 LLM_API_KEY=sk-your-key-here
@@ -70,7 +81,7 @@ LLM_API_BASE=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
 ```
 
-也可以用 DeepSeek：
+For DeepSeek:
 
 ```env
 LLM_API_KEY=sk-your-deepseek-key
@@ -78,110 +89,97 @@ LLM_API_BASE=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-chat
 ```
 
-> 不配置 `.env` 不影响使用，系统会自动降级为关键词匹配模式。
+> Without `.env`, the system falls back to keyword matching — all features still work without AI.
 
-## 使用流程
+---
 
-```
-添加信息源 (RSS / 网页 / 雪球)
-    ↓
-设定关注领域 (如 AI、投资、Startups)
-    ↓
-抓取文章 → 进入收件箱
-    ↓
-AI 过滤 → 按相关度评分排序
-    ↓
-阅读文章 → 创建决策
-    ↓
-定期复盘 → 回顾决策结果
-```
+## Usage Guide / 使用说明
 
 ### 第一步：添加信息源
 
 进入「信息源」页面，点击「添加源」，填入：
-- **名称**：如"Hacker News"
-- **类型**：`rss`（推荐）、`webpage`、`xueqiu`（雪球用户）
-- **地址**：RSS 地址、网页 URL、或雪球用户主页 `https://xueqiu.com/{user_id}`
-- **标签**：方便分类
+- **名称** — 如 "Hacker News"
+- **类型** — `rss`（推荐）、`webpage`、`xueqiu`（雪球用户）
+- **地址** — RSS 地址、网页 URL、或雪球用户主页 `https://xueqiu.com/{user_id}`
+- **标签** — 方便分类
 
 #### 雪球用户订阅
 
-> 需要登录态。在创建雪球类型信息源时，按页面提示填写 Cookie：
->
-> 登录 xueqiu.com → F12 打开开发者工具 → Application → Cookies → xueqiu.com → 右键复制全部 → 粘贴到 Cookie 输入框
->
-> 系统内置 5 分钟抓取间隔保护，不会触发风控。
+在创建雪球类型源时，按页面提示填写 Cookie（登录 xueqiu.com → F12 → Application → Cookies → xueqiu.com → 复制全部）。系统内置 5 分钟抓取间隔保护。
 
 ### 第二步：设定关注领域
 
 进入「关注领域」页面，设定你感兴趣的领域。越具体，AI 过滤越精准。
 
-例如：
-- 领域：`AI/LLM`
-- 描述：`关注大模型应用落地和工具链`
-- 当前焦点：`评估 DeepSeek 与 GPT 在实际项目中的表现`
-- 目标：`搭建一套 AI 驱动的个人知识系统`
+示例：
+| 字段 | 内容 |
+|------|------|
+| 领域 | AI/LLM |
+| 描述 | 关注大模型应用落地和工具链 |
+| 当前焦点 | 评估 DeepSeek 与 GPT 在实际项目中的表现 |
+| 目标 | 搭建一套 AI 驱动的个人知识系统 |
 
 ### 第三步：抓取与过滤
 
 1. 进入「信息源」→ 点击「抓取」
 2. 进入「收件箱」→ 点击「AI 过滤」
-3. 文章按相关度从高到低排序，一目了然
+3. 文章按相关度从高到低排序
 
 ### 第四步：决策与复盘
 
-阅读文章后，可以创建决策 → 记录选项、分析利弊 → 定期回顾决策结果。
+阅读文章 → 创建决策 → 记录选项与分析 → 定期回顾决策结果。
 
-## API 文档
+---
 
-启动后端后访问 **http://localhost:8000/docs** 查看交互式 API 文档（Swagger UI）。
+## API Documentation
 
-主要接口：
+Once the backend is running, visit **http://localhost:8000/docs** for Swagger UI.
 
-| 路径 | 说明 |
-|------|------|
-| `GET /api/health` | 健康检查 |
-| `POST /api/sources/` | 创建信息源 |
-| `GET /api/sources/` | 列出所有信息源 |
-| `POST /api/articles/fetch` | 触发抓取 |
-| `POST /api/articles/filter` | AI 过滤文章 |
-| `GET /api/articles/inbox` | 收件箱（按评分排序） |
-| `POST /api/contexts/` | 创建关注领域 |
-| `POST /api/decisions/` | 创建决策 |
-| `POST /api/decisions/ai-advice` | 获取 AI 决策建议 |
-| `POST /api/decisions/{id}/reviews` | 创建决策复盘 |
-| `GET /api/decisions/due-reviews` | 获取到期需复盘列表 |
+| Endpoint                                      | Description                          |
+| --------------------------------------------- | ------------------------------------ |
+| `GET /api/health`                             | Health check                         |
+| `POST /api/sources/`                          | Create a source                      |
+| `GET /api/sources/`                           | List all sources                     |
+| `POST /api/articles/fetch`                    | Trigger article fetching             |
+| `POST /api/articles/filter`                   | AI-powered article filtering         |
+| `GET /api/articles/inbox`                     | Inbox (sorted by relevance)          |
+| `POST /api/contexts/`                         | Create an interest domain            |
+| `POST /api/decisions/`                        | Create a decision                    |
+| `POST /api/decisions/ai-advice`               | Get AI-generated decision advice     |
+| `POST /api/decisions/{id}/reviews`            | Create a decision review             |
+| `GET /api/decisions/due-reviews`              | List decisions due for review        |
 
-## 项目结构
+---
+
+## Project Structure
 
 ```
-├── start.bat                 # 一键启动脚本
-├── README.md
+├── start.bat                   # One-click startup script
 ├── backend/
-│   ├── main.py               # FastAPI 入口
-│   ├── schemas.py            # Pydantic 数据模型
+│   ├── main.py                 # FastAPI entry point
+│   ├── schemas.py              # Pydantic models
 │   ├── requirements.txt
-│   ├── .env.example          # AI 配置模板
+│   ├── .env.example            # AI config template
 │   ├── models/
-│   │   ├── database.py       # 数据库引擎 & 会话
-│   │   └── models.py         # ORM 模型
+│   │   ├── database.py         # DB engine & session
+│   │   └── models.py           # ORM models
 │   ├── routers/
-│   │   ├── sources.py        # 信息源 CRUD
-│   │   ├── articles.py       # 文章 CRUD + 过滤 + 抓取
-│   │   ├── contexts.py       # 关注领域 CRUD
-│   │   └── decisions.py      # 决策 CRUD + 复盘
+│   │   ├── sources.py          # Source CRUD
+│   │   ├── articles.py         # Article CRUD + filter + fetch
+│   │   ├── contexts.py         # Interest domain CRUD
+│   │   └── decisions.py        # Decision CRUD + review
 │   └── services/
-│       ├── ai_filter.py      # AI 过滤 & 决策建议
-│       ├── source_fetcher.py # RSS/网页抓取
-│       └── decision_service.py # 决策生命周期管理
+│       ├── ai_filter.py        # AI filtering & advice
+│       ├── source_fetcher.py   # RSS/web/xueqiu fetcher
+│       └── decision_service.py # Decision lifecycle
 └── frontend/
     ├── package.json
     ├── vite.config.ts
     └── src/
-        ├── App.tsx           # 路由配置
-        ├── api/client.ts     # API 客户端
+        ├── App.tsx             # Router config
+        ├── api/client.ts       # API client
         ├── components/
-        │   └── Layout.tsx    # 侧边栏导航布局
+        │   └── Layout.tsx      # Sidebar navigation
         └── pages/
             ├── Dashboard.tsx
             ├── Inbox.tsx
@@ -192,22 +190,8 @@ AI 过滤 → 按相关度评分排序
             └── Review.tsx
 ```
 
-## 关于雪球（Xueqiu）订阅
-
-> 这是对你上一个问题的回答。
-
-当前系统支持 **RSS** 和 **网页抓取** 两种信息源类型。对于雪球特定用户的发言：
-
-**可行的方案：**
-- 如果该雪球用户有个人 RSS 输出地址，直接添加为 `rss` 源即可
-- 雪球用户主页（如 `https://xueqiu.com/{user_id}`）可以用 `webpage` 类型抓取，但受限于：
-  - 雪球页面需要登录才能查看完整内容
-  - 页面内容可能是 JavaScript 动态渲染的，`requests` + `BeautifulSoup` 不一定能抓到
-
-**更好的方案：**
-- 后续可以针对雪球写一个专门的抓取器（类似 `source_fetcher.py` 里的 `_fetch_api` 预留位），通过雪球的 API 或爬虫来获取特定用户的发言
-- 目前建议先用 RSS 源尝试，如果关注的大佬有开博客或 Newsletter，订阅 RSS 会更稳定
-
 ---
 
-*个人复盘系统 — 让信息为你所用，而不是淹没你。*
+## License
+
+MIT
