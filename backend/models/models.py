@@ -1,8 +1,9 @@
 """SQLAlchemy 数据模型定义"""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, JSON, ForeignKey
 from models.database import Base
+from utils import beijing_now
 
 
 class Source(Base):
@@ -19,8 +20,9 @@ class Source(Base):
     last_fetched_at = Column(DateTime, nullable=True, comment="上次拉取时间")
     tags = Column(JSON, default=list, comment="标签")
     config = Column(JSON, default=dict, comment="额外配置，如 Cookie、Headers 等")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    skip_filter = Column(Boolean, default=False, comment="跳过 AI 过滤，保留全部文章")
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
 
 
 class Article(Base):
@@ -41,14 +43,17 @@ class Article(Base):
     relevance_reason = Column(Text, default="", comment="相关原因说明")
     suggested_action = Column(String(50), default="", comment="AI 建议操作: read/archive/decide/ignore")
 
+    # AI 过滤标记
+    filtered_at = Column(DateTime, nullable=True, comment="AI 过滤时间")
+
     # 状态管理
     status = Column(String(20), default="new", comment="new/reviewed/archived/actioned")
     is_read = Column(Boolean, default=False)
     is_starred = Column(Boolean, default=False, comment="是否标星")
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: beijing_now())
     read_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
 
 
 class UserContext(Base):
@@ -62,8 +67,8 @@ class UserContext(Base):
     goals = Column(JSON, default=list, comment="当前目标列表")
     priority = Column(Integer, default=5, comment="优先级 1-10")
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
 
 
 class Decision(Base):
@@ -74,9 +79,12 @@ class Decision(Base):
     title = Column(String(500), nullable=False)
     description = Column(Text, default="")
     context = Column(Text, default="", comment="触发此决策的背景")
+    original_context = Column(Text, default="", comment="创建时的背景快照（不可变）")
+    environment_snapshot = Column(JSON, default=dict, comment="决策时的外部环境快照（市场状况、时间等）")
 
     # 关联
     article_id = Column(Integer, ForeignKey("articles.id"), nullable=True, comment="触发文章")
+    category_id = Column(Integer, ForeignKey("decision_categories.id"), nullable=True, comment="所属分类")
     related_domains = Column(JSON, default=list, comment="关联领域")
 
     # 决策选项
@@ -97,9 +105,9 @@ class Decision(Base):
     next_review_date = Column(DateTime, nullable=True, comment="下次复盘日期")
     last_reviewed_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: beijing_now())
     decided_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
 
 
 class DecisionReview(Base):
@@ -109,7 +117,7 @@ class DecisionReview(Base):
     id = Column(Integer, primary_key=True, index=True)
     decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=False)
 
-    review_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    review_date = Column(DateTime, default=lambda: beijing_now())
     outcome = Column(Text, default="", comment="实际结果")
     outcome_score = Column(Integer, default=5, comment="结果评分 1-10 (10=完全达到预期)")
     lessons_learned = Column(Text, default="", comment="经验教训")
@@ -117,5 +125,74 @@ class DecisionReview(Base):
     what_to_improve = Column(Text, default="", comment="待改进")
     next_steps = Column(Text, default="", comment="后续行动")
     mood = Column(String(50), default="neutral", comment="心情标记")
+    progress = Column(Text, default="", comment="进展说明（用于进行中决策的持续跟踪）")
+    adjusted_plan = Column(Text, default="", comment="调整计划（基于当前进展的下一步调整）")
+    is_progress_update = Column(Boolean, default=False, comment="是否为进展更新而非最终结论")
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: beijing_now())
+
+
+class DecisionChangeLog(Base):
+    """决策变更记录"""
+    __tablename__ = "decision_changelogs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=False, index=True)
+    changed_at = Column(DateTime, default=lambda: beijing_now(), comment="变更时间")
+    field_name = Column(String(100), nullable=False, comment="变更字段")
+    old_value = Column(Text, default="", comment="旧值")
+    new_value = Column(Text, default="", comment="新值")
+    change_reason = Column(String(500), default="", comment="变更原因（可选）")
+
+
+class DecisionCategory(Base):
+    """决策分类/文件夹"""
+    __tablename__ = "decision_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, comment="分类名称")
+    parent_id = Column(Integer, ForeignKey("decision_categories.id"), nullable=True, comment="父分类")
+    sort_order = Column(Integer, default=0, comment="排序")
+    description = Column(Text, default="", comment="描述")
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
+
+
+class NoteCategory(Base):
+    """笔记分类/文件夹"""
+    __tablename__ = "note_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, comment="分类名称")
+    parent_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True, comment="父分类")
+    sort_order = Column(Integer, default=0, comment="排序")
+    description = Column(Text, default="", comment="描述")
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
+
+
+class Note(Base):
+    """Markdown 笔记"""
+    __tablename__ = "notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(500), nullable=False, comment="标题")
+    content = Column(Text, default="", comment="Markdown 内容")
+    category_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True, comment="所属分类")
+    tags = Column(JSON, default=list, comment="标签列表")
+    is_published = Column(Boolean, default=True, comment="是否公开")
+    ai_skills = Column(JSON, default=list, comment="AI 提取的技能/方法论列表")
+    word_count = Column(Integer, default=0, comment="字数")
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
+
+
+class Setting(Base):
+    """应用设置（键值对）"""
+    __tablename__ = "settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, nullable=False, comment="设置键")
+    value = Column(Text, default="", comment="设置值")
+    description = Column(String(500), default="", comment="描述")
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())

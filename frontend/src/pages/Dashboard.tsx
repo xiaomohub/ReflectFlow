@@ -16,11 +16,13 @@ export default function Dashboard() {
     Promise.all([
       decisionsApi.stats(),
       decisionsApi.dueReviews(),
-      articlesApi.list({ sort_by: 'relevance_score', limit: 5 }),
-    ]).then(([s, reviews, articles]) => {
+      articlesApi.list({ sort_by: 'relevance_score', page_size: 5 }),
+    ]).then(([s, reviews, page]) => {
       setStats(s);
       setDueReviews(reviews);
-      setTopArticles(articles);
+      setTopArticles(page.items);
+    }).catch(() => {
+      setTopArticles([]);
     }).finally(() => setLoading(false));
   }, []);
 

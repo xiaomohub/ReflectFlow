@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Rss, Inbox, GitBranch, Brain, RefreshCw,
+  LayoutDashboard, Rss, Inbox, GitBranch, Brain, RefreshCw, FileText,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '仪表盘' },
   { to: '/sources', icon: Rss, label: '信息源' },
   { to: '/inbox', icon: Inbox, label: '收件箱' },
+  { to: '/notes', icon: FileText, label: '笔记' },
   { to: '/contexts', icon: Brain, label: '关注领域' },
   { to: '/decisions', icon: GitBranch, label: '决策管理' },
   { to: '/review', icon: RefreshCw, label: '待复盘' },

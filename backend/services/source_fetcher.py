@@ -6,6 +6,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from models.models import Source, Article
+from utils import beijing_now
 
 
 class SourceFetcher:
@@ -23,13 +24,15 @@ class SourceFetcher:
         # 频率限制：5 分钟内不重复抓取
         if source.last_fetched_at:
             from datetime import timedelta
-            if datetime.now(timezone.utc) - source.last_fetched_at < timedelta(minutes=5):
+            if beijing_now() - source.last_fetched_at < timedelta(minutes=5):
                 print(f"信息源 {source.name} 在 5 分钟内刚抓取过，跳过")
                 return []
 
         articles = []
         try:
             if source.source_type == "rss":
+                articles = self._fetch_rss(source)
+            elif source.source_type == "rsshub":
                 articles = self._fetch_rss(source)
             elif source.source_type == "webpage":
                 articles = self._fetch_webpage(source)
@@ -39,7 +42,7 @@ class SourceFetcher:
                 articles = self._fetch_xueqiu(source)
 
             # 更新拉取时间
-            source.last_fetched_at = datetime.now(timezone.utc)
+            source.last_fetched_at = beijing_now()
             self.db.commit()
         except Exception as e:
             print(f"获取信息源 {source.name} 失败: {e}")
@@ -202,7 +205,7 @@ class SourceFetcher:
                 try:
                     article_date = datetime.strptime(created_at_str, "%a %b %d %H:%M:%S %z %Y")
                 except (ValueError, TypeError):
-                    article_date = datetime.now(timezone.utc)
+                    article_date = beijing_now()
 
                 article = Article(
                     source_id=source.id,

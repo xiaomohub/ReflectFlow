@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Bash(git reset *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(ls *)",
+      "Bash(dir *)",
+      "Bash(cat *)",
+      "Bash(type *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(python *)",
+      "Bash(python -m *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(pip install *)",
+      "Bash(pytest *)",
+      "Bash(vite *)",
+      "Bash(uvicorn *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(copy *)",
+      "Bash(mv *)",
+      "Bash(move *)",
+      "Bash(cd *)",
+      "Bash(echo \"EXIT_CODE: $?\")",
+      "Skill(update-config)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(del /f *)",
+      "Bash(format *)",
+      "Bash(git push *)"
+    ]
+  }
+}

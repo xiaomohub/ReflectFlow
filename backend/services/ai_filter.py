@@ -11,7 +11,8 @@ import os
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from models.models import Article, UserContext
+from models.models import Article, Source, UserContext, Setting
+from utils import beijing_now
 
 
 class AIFilterService:
@@ -42,8 +43,12 @@ class AIFilterService:
         return "\n".join(parts)
 
     def filter_articles(self, article_ids: Optional[list[int]] = None) -> list[Article]:
-        """对文章进行 AI 过滤和评分"""
-        query = self.db.query(Article).filter(Article.status == "new")
+        """对文章进行 AI 过滤和评分——仅处理未被过滤过的文章，跳过 skip_filter 信息源"""
+        query = self.db.query(Article).filter(Article.filtered_at.is_(None))
+        # 排除设置了跳过过滤的信息源
+        query = query.outerjoin(Source, Article.source_id == Source.id).filter(
+            (Source.skip_filter == False) | (Source.skip_filter.is_(None))
+        )
         if article_ids:
             query = query.filter(Article.id.in_(article_ids))
         articles = query.order_by(Article.created_at.desc()).limit(50).all()
@@ -90,7 +95,7 @@ class AIFilterService:
 对每篇文章，返回以下字段：
 - "id": 文章ID(数字)
 - "relevance_score": 相关度评分(0.0-1.0)，与用户领域越相关分数越高
-- "relevance_reason": 相关原因简述(50字以内)
+- "relevance_reason": 相关原因简述(50字以内)，写明匹配到哪个领域/人物/关键词，格式如"关注领域:AI"或"重要人物:马斯克"
 - "summary": 一句话摘要(30字以内)
 - "suggested_action": 建议操作，"read"(值得阅读)、"archive"(可存档)、"decide"(需要做决策)、"ignore"(忽略)
 - "tags": 建议标签(数组)
@@ -130,12 +135,26 @@ class AIFilterService:
                         article.relevance_reason = item.get("relevance_reason", "")
                         article.summary = item.get("summary", "")
                         article.suggested_action = item.get("suggested_action", "read")
+
+                        # 提取匹配的关注领域
+                        domains = self.db.query(UserContext).filter(UserContext.is_active == True).all()
+                        matched_domains = []
+                        reason_lower = article.relevance_reason.lower()
+                        for d in domains:
+                            if d.domain.lower() in reason_lower:
+                                matched_domains.append(d.domain)
+
                         article.ai_analysis = {
                             "tags": item.get("tags", []),
                             "raw_analysis": item,
+                            "matched_domains": matched_domains,
                         }
+                        article.filtered_at = beijing_now()
 
                 self.db.commit()
+
+                # 删除相关度为0的文章 + 重要人物提权 + 敏感过滤
+                self._post_process_batch(articles)
         except Exception as e:
             print(f"LLM 调用失败: {e}")
             self._fallback_analysis(articles)
@@ -155,15 +174,81 @@ class AIFilterService:
 
         for article in articles:
             text = f"{article.title} {article.content}".lower()
-            matches = sum(1 for kw in keywords if kw in text)
+            matched_kws = [kw for kw in keywords if kw in text]
+            matches = len(matched_kws)
             score = min(1.0, matches / max(len(keywords), 1) * 3)
             article.relevance_score = round(score, 2)
-            article.relevance_reason = f"匹配到 {matches} 个关键词" if matches > 0 else "无关键词匹配"
+            article.relevance_reason = (
+                f"匹配关键词: {', '.join(matched_kws[:5])}" if matches > 0
+                else "无关键词匹配"
+            )
             article.summary = article.title[:100]
             article.suggested_action = "read" if score > 0.3 else "archive"
-            article.ai_analysis = {"matched_keywords": list(keywords), "method": "fallback"}
+            # 提取匹配的关注领域
+            domains = self.db.query(UserContext).filter(UserContext.is_active == True).all()
+            matched_domains = []
+            for d in domains:
+                d_lower = d.domain.lower()
+                if any(d_lower in kw.lower() for kw in matched_kws):
+                    matched_domains.append(d.domain)
+
+            article.ai_analysis = {
+                "matched_keywords": matched_kws,
+                "all_keywords": list(keywords),
+                "matched_domains": matched_domains,
+                "method": "fallback",
+            }
+            article.filtered_at = beijing_now()
 
         self.db.commit()
+        self._post_process_batch(articles)
+
+    def _post_process_batch(self, articles: list[Article]):
+        """后处理：敏感内容过滤、零相关度删除、重要人物提权"""
+        # 加载配置
+        figures_setting = self.db.query(Setting).filter(Setting.key == "important_figures").first()
+        sensitive_setting = self.db.query(Setting).filter(Setting.key == "sensitive_words").first()
+
+        important_figures = []
+        if figures_setting and figures_setting.value:
+            important_figures = [f.strip().lower() for f in figures_setting.value.split(",") if f.strip()]
+
+        sensitive_words = []
+        if sensitive_setting and sensitive_setting.value:
+            sensitive_words = [w.strip().lower() for w in sensitive_setting.value.split(",") if w.strip()]
+
+        for article in articles:
+            text = f"{article.title} {article.content}".lower()
+            deleted = False
+
+            # 1. 敏感内容过滤（优先检查，命中直接删除）
+            if sensitive_words:
+                for word in sensitive_words:
+                    if word in text:
+                        print(f"[filter] 敏感内容过滤: 删除文章 #{article.id} '{article.title}' (命中: {word})")
+                        self.db.delete(article)
+                        deleted = True
+                        break
+
+            if not deleted:
+                # 2. 零相关度删除
+                if article.relevance_score == 0:
+                    print(f"[filter] 零相关度: 删除文章 #{article.id} '{article.title}'")
+                    self.db.delete(article)
+                    deleted = True
+
+                # 3. 重要人物提权（仅对未删除的文章）
+                if not deleted and important_figures:
+                    for figure in important_figures:
+                        if figure in text:
+                            old_score = article.relevance_score
+                            article.relevance_score = min(1.0, article.relevance_score + 0.2)
+                            article.relevance_reason += f" [重要人物提及]"
+                            if old_score != article.relevance_score:
+                                print(f"[filter] 重要人物提权: #{article.id} 评分 {old_score}→{article.relevance_score}")
+                            break
+
+            self.db.commit()
 
     def _parse_llm_response(self, content: str) -> list:
         """解析 LLM 的 JSON 响应"""

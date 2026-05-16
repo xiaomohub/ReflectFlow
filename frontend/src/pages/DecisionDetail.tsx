@@ -1,29 +1,45 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Plus, History, Trash2 } from 'lucide-react';
-import { decisionsApi, contextsApi } from '../api/client';
-import type { Decision, DecisionReview, UserContext } from '../api/client';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { ArrowLeft, Sparkles, Plus, History, Trash2, Clock, GitCommit, FileText, RefreshCw, Brain, ChevronDown, ChevronUp } from 'lucide-react';
+import { decisionsApi, contextsApi, skillsApi } from '../api/client';
+import type { Decision, DecisionReview, DecisionChangeLog, UserContext, DecisionCategory, PersonaAnalysis, PersonaInfo } from '../api/client';
 
 export default function DecisionDetail() {
   const { id } = useParams();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const isNew = id === 'new';
+  const isNew = location.pathname === '/decisions/new';
 
   const [decision, setDecision] = useState<Decision>({
-    id: 0, title: '', description: '', context: '', article_id: null,
-    related_domains: [], options: [], chosen_option: '', rationale: '',
+    id: 0, title: '', description: '', context: '', original_context: '', environment_snapshot: {},
+    article_id: null, category_id: null, related_domains: [], options: [], chosen_option: '', rationale: '',
     ai_advice: '', ai_advice_used: false, status: 'draft', confidence_score: 5,
     review_interval_days: 30, next_review_date: null, last_reviewed_at: null,
     created_at: '', decided_at: null, updated_at: '',
   });
   const [reviews, setReviews] = useState<DecisionReview[]>([]);
+  const [changeLog, setChangeLog] = useState<DecisionChangeLog[]>([]);
   const [contexts, setContexts] = useState<UserContext[]>([]);
+  const [categories, setCategories] = useState<DecisionCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [reviewForm, setReviewForm] = useState({ outcome: '', outcome_score: 5, lessons_learned: '', what_went_well: '', what_to_improve: '', next_steps: '', mood: 'neutral' });
+  const [showChangeLog, setShowChangeLog] = useState(false);
+  const [showSnapshot, setShowSnapshot] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsResults, setSkillsResults] = useState<PersonaAnalysis[]>([]);
+  const [personasList, setPersonasList] = useState<PersonaInfo[]>([]);
+  const [selectedPersonas, setSelectedPersonas] = useState<string[]>([]);
+  const [expandedAnalysis, setExpandedAnalysis] = useState<string | null>(null);
+  const [reviewForm, setReviewForm] = useState({
+    outcome: '', outcome_score: 5, lessons_learned: '',
+    what_went_well: '', what_to_improve: '', next_steps: '', mood: 'neutral',
+    progress: '', adjusted_plan: '', is_progress_update: false,
+  });
+  const [changeReason, setChangeReason] = useState('');
   const [newOption, setNewOption] = useState({ name: '', pros: '', cons: '', score: 5 });
 
   useEffect(() => {
@@ -31,16 +47,26 @@ export default function DecisionDetail() {
       setLoading(false);
       const articleId = searchParams.get('article');
       if (articleId) setDecision(d => ({ ...d, article_id: Number(articleId) }));
-      contextsApi.list().then(setContexts);
+      Promise.all([
+        contextsApi.list(),
+        decisionsApi.listCategories(),
+      ]).then(([ctx, cats]) => {
+        setContexts(ctx);
+        setCategories(cats);
+      });
     } else if (id) {
       Promise.all([
         decisionsApi.get(Number(id)),
         decisionsApi.getReviews(Number(id)),
+        decisionsApi.getChangeLog(Number(id)),
         contextsApi.list(),
-      ]).then(([d, r, c]) => {
+        decisionsApi.listCategories(),
+      ]).then(([d, r, c, ctx, cats]) => {
         setDecision(d);
         setReviews(r);
-        setContexts(c);
+        setChangeLog(c);
+        setContexts(ctx);
+        setCategories(cats);
         setLoading(false);
       });
     }
@@ -49,10 +75,20 @@ export default function DecisionDetail() {
   const handleSave = async () => {
     setSaving(true);
     if (isNew) {
-      const d = await decisionsApi.create(decision);
+      const d = await decisionsApi.create({
+        ...decision,
+        original_context: decision.context,
+        environment_snapshot: { created_at: new Date().toISOString() },
+      });
       navigate(`/decisions/${d.id}`, { replace: true });
     } else {
-      await decisionsApi.update(Number(id), decision);
+      const updateData: Record<string, unknown> = { ...decision };
+      if (changeReason) updateData.change_reason = changeReason;
+      await decisionsApi.update(Number(id), updateData as Partial<Decision>);
+      setChangeReason('');
+      // 刷新 changelog
+      const log = await decisionsApi.getChangeLog(Number(id));
+      setChangeLog(log);
     }
     setSaving(false);
   };
@@ -72,6 +108,33 @@ export default function DecisionDetail() {
       alert('AI 建议获取失败');
     }
     setAdviceLoading(false);
+  };
+
+  const handleSkillsAnalysis = async () => {
+    if (!decision.title) { alert('请先输入决策标题'); return; }
+    setSkillsLoading(true);
+    try {
+      // 首次打开时加载人物列表
+      if (personasList.length === 0) {
+        const list = await skillsApi.listPersonas();
+        setPersonasList(list);
+      }
+      const result = await skillsApi.analyze({
+        decision_id: isNew ? undefined : Number(id),
+        title: decision.title,
+        context: decision.context,
+        options: decision.options,
+        persona_ids: selectedPersonas,
+      });
+      setSkillsResults(result.analyses);
+      setSkillsOpen(true);
+      if (result.analyses.length > 0) {
+        setExpandedAnalysis(result.analyses[0].persona_id);
+      }
+    } catch (e) {
+      alert('人格分析获取失败');
+    }
+    setSkillsLoading(false);
   };
 
   const handleAddOption = () => {
@@ -106,7 +169,7 @@ export default function DecisionDetail() {
     setShowReviewForm(false);
     const r = await decisionsApi.getReviews(Number(id));
     setReviews(r);
-    setReviewForm({ outcome: '', outcome_score: 5, lessons_learned: '', what_went_well: '', what_to_improve: '', next_steps: '', mood: 'neutral' });
+    setReviewForm({ outcome: '', outcome_score: 5, lessons_learned: '', what_went_well: '', what_to_improve: '', next_steps: '', mood: 'neutral', progress: '', adjusted_plan: '', is_progress_update: false });
   };
 
   const toggleDomain = (domain: string) => {
@@ -118,6 +181,21 @@ export default function DecisionDetail() {
     }));
   };
 
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      draft: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
+      active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      completed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      abandoned: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+    };
+    return map[status] || map.draft;
+  };
+
+  const getStatusLabel = (status: string) => {
+    const map: Record<string, string> = { draft: '草稿', active: '进行中', completed: '已完成', abandoned: '已放弃' };
+    return map[status] || status;
+  };
+
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
 
   return (
@@ -126,14 +204,30 @@ export default function DecisionDetail() {
         <ArrowLeft className="w-4 h-4" />返回决策列表
       </button>
 
+      {/* 主编辑区 */}
       <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-            {isNew ? '新建决策' : '决策详情'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-white">
+              {isNew ? '新建决策' : '决策详情'}
+            </h2>
+            {!isNew && (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getStatusBadge(decision.status)}`}>
+                {getStatusLabel(decision.status)}
+              </span>
+            )}
+          </div>
           <div className="flex gap-3">
             {!isNew && (
               <>
+                <button onClick={() => setShowChangeLog(!showChangeLog)}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                  <GitCommit className="w-4 h-4" />变更历史
+                </button>
+                <button onClick={() => setShowSnapshot(!showSnapshot)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-colors">
+                  <FileText className="w-4 h-4" />环境快照
+                </button>
                 <button onClick={() => setShowReviewForm(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-lg text-sm hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 transition-colors">
                   <History className="w-4 h-4" />添加复盘
@@ -152,6 +246,16 @@ export default function DecisionDetail() {
             </button>
           </div>
         </div>
+
+        {/* 变更原因输入 */}
+        {!isNew && (
+          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/30 rounded-lg">
+            <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">变更原因说明（可选，记录本次修改的原因）</label>
+            <input value={changeReason} onChange={e => setChangeReason(e.target.value)}
+              className="w-full px-3 py-1.5 border border-amber-200 dark:border-amber-700/50 rounded bg-white dark:bg-slate-700 text-sm"
+              placeholder="如：调整仓位、市场环境变化、新增信息..." />
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>
@@ -183,25 +287,39 @@ export default function DecisionDetail() {
                 onChange={e => setDecision({ ...decision, review_interval_days: Number(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">分类</label>
+              <select value={decision.category_id ?? ''} onChange={e => setDecision({ ...decision, category_id: e.target.value ? Number(e.target.value) : null })}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm">
+                <option value="">未分类</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">背景 / 触发原因</label>
-            <textarea value={decision.context} onChange={e => setDecision({ ...decision, context: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm" rows={3} placeholder="是什么促使你做这个决策？" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">关联领域</label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {contexts.map(c => (
-                <button key={c.id} onClick={() => toggleDomain(c.domain)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    decision.related_domains.includes(c.domain)
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200'
-                  }`}>{c.domain}</button>
-              ))}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">背景 / 触发原因</label>
+              <textarea value={decision.context} onChange={e => setDecision({ ...decision, context: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm" rows={3} placeholder="是什么促使你做这个决策？" />
+              {decision.original_context && decision.context !== decision.original_context && (
+                <p className="text-xs text-amber-500 mt-1">已修改，原始背景保存在环境快照中</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">关联领域</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {contexts.map(c => (
+                  <button key={c.id} onClick={() => toggleDomain(c.domain)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      decision.related_domains.includes(c.domain)
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200'
+                    }`}>{c.domain}</button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -290,8 +408,232 @@ export default function DecisionDetail() {
               </div>
             )}
           </div>
+
+          {/* 人格 Skills 多视角分析 */}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-indigo-500" />
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                  人格 Skills 多视角分析
+                </label>
+                <span className="text-xs text-slate-400">（巴菲特/芒格/达利欧等视角）</span>
+              </div>
+              <button
+                onClick={handleSkillsAnalysis}
+                disabled={skillsLoading}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 disabled:opacity-50 transition-colors"
+              >
+                <Sparkles className={`w-3 h-3 ${skillsLoading ? 'animate-spin' : ''}`} />
+                {skillsLoading ? '分析中...' : '多视角分析'}
+              </button>
+            </div>
+
+            {/* 人物快速选择 */}
+            {personasList.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {personasList.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedPersonas(prev =>
+                      prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id]
+                    )}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                      selectedPersonas.includes(p.id) || selectedPersonas.length === 0
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200 dark:bg-slate-700'
+                    }`}
+                  >
+                    {p.emoji} {p.name}
+                  </button>
+                ))}
+                {selectedPersonas.length > 0 && (
+                  <button
+                    onClick={() => setSelectedPersonas([])}
+                    className="px-2 py-0.5 rounded text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    清除选择
+                  </button>
+                )}
+                <span className="text-xs text-slate-400 ml-1 self-center">
+                  {selectedPersonas.length === 0 ? '(默认全部)' : `(${selectedPersonas.length} 个)`}
+                </span>
+              </div>
+            )}
+
+            {/* 分析结果 */}
+            {skillsOpen && skillsResults.length > 0 && (
+              <div className="space-y-3">
+                {skillsResults.map((result) => (
+                  <div key={result.persona_id} className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <button
+                      onClick={() => setExpandedAnalysis(
+                        expandedAnalysis === result.persona_id ? null : result.persona_id
+                      )}
+                      className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{result.emoji}</span>
+                        <div className="text-left">
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            {result.persona_name}
+                          </span>
+                          <span className="text-xs text-slate-400 ml-2">{result.persona_style}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          result.confidence >= 7 ? 'bg-green-100 text-green-700' :
+                          result.confidence >= 4 ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-600'
+                        }`}>
+                          信心指数: {result.confidence}/10
+                        </span>
+                        {expandedAnalysis === result.persona_id
+                          ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                          : <ChevronDown className="w-4 h-4 text-slate-400" />
+                        }
+                      </div>
+                    </button>
+
+                    {expandedAnalysis === result.persona_id && (
+                      <div className="p-4 space-y-4">
+                        {/* 核心建议 */}
+                        <div className="p-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg border border-indigo-100 dark:border-indigo-900/30">
+                          <p className="text-sm font-medium text-indigo-700 dark:text-indigo-400">
+                            💡 {result.advice}
+                          </p>
+                        </div>
+
+                        {/* 详细分析 */}
+                        <div>
+                          <h4 className="text-xs font-medium text-slate-500 mb-2">详细分析</h4>
+                          <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                            {result.analysis}
+                          </p>
+                        </div>
+
+                        {/* 关键问题 */}
+                        {result.key_questions.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-medium text-slate-500 mb-2">🤔 关键问题</h4>
+                            <ul className="space-y-1">
+                              {result.key_questions.map((q, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+                                  <span className="text-amber-500 mt-0.5 shrink-0">•</span>
+                                  {q}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* 风险提示 */}
+                        {result.risk_warnings.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-medium text-red-500 mb-2">⚠️ 风险提示</h4>
+                            <ul className="space-y-1">
+                              {result.risk_warnings.map((w, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+                                  <span className="text-red-400 mt-0.5 shrink-0">•</span>
+                                  {w}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 空状态 */}
+            {skillsOpen && skillsResults.length === 0 && !skillsLoading && (
+              <div className="p-6 text-center">
+                <Brain className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">点击「多视角分析」获取巴菲特、芒格等人的决策建议</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* 环境快照面板 */}
+      {showSnapshot && !isNew && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+          <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
+            <FileText className="w-4 h-4 text-indigo-500" />
+            决策环境快照
+            <span className="text-xs font-normal text-slate-400 ml-1">（创建时保存，不可变）</span>
+          </h3>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h4 className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> 原始背景
+              </h4>
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg text-sm text-slate-700 dark:text-slate-300">
+                {decision.original_context || '无记录'}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" /> 当前背景
+              </h4>
+              <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg text-sm text-slate-700 dark:text-slate-300">
+                {decision.context || '无记录'}
+              </div>
+            </div>
+          </div>
+          {Object.keys(decision.environment_snapshot).length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-xs font-medium text-slate-500 mb-2">环境元数据</h4>
+              <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <pre className="text-xs text-slate-500 whitespace-pre-wrap">
+                  {JSON.stringify(decision.environment_snapshot, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 变更历史面板 */}
+      {showChangeLog && !isNew && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+          <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
+            <GitCommit className="w-4 h-4 text-amber-500" />
+            变更历史（{changeLog.length} 条）
+          </h3>
+          {changeLog.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">暂无变更记录</p>
+          ) : (
+            <div className="space-y-3">
+              {changeLog.map((log) => (
+                <div key={log.id} className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-700/30 rounded-lg">
+                  <div className="w-2 h-2 mt-1.5 rounded-full bg-amber-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <span>{new Date(log.changed_at).toLocaleString('zh-CN')}</span>
+                      <span className="font-medium text-amber-600 dark:text-amber-400">{log.field_name}</span>
+                    </div>
+                    <div className="mt-1 text-sm">
+                      {log.old_value && (
+                        <span className="text-red-500 line-through mr-2">{log.old_value}</span>
+                      )}
+                      <span className="text-green-600">{log.new_value}</span>
+                    </div>
+                    {log.change_reason && (
+                      <p className="text-xs text-slate-400 mt-1">原因: {log.change_reason}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 复盘历史 */}
       {!isNew && reviews.length > 0 && (
@@ -304,7 +646,12 @@ export default function DecisionDetail() {
             {reviews.map((r) => (
               <div key={r.id} className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-slate-500">{new Date(r.review_date).toLocaleDateString('zh-CN')}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">{new Date(r.review_date).toLocaleDateString('zh-CN')}</span>
+                    {r.is_progress_update && (
+                      <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded">进展更新</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-amber-600 font-medium">评分: {r.outcome_score}/10</span>
                     <button onClick={() => handleDeleteReview(r.id)}
@@ -314,6 +661,12 @@ export default function DecisionDetail() {
                   </div>
                 </div>
                 <p className="text-sm text-slate-600 dark:text-slate-300">{r.outcome}</p>
+                {r.progress && (
+                  <p className="text-sm text-slate-500 mt-2"><span className="font-medium text-blue-600">进展:</span> {r.progress}</p>
+                )}
+                {r.adjusted_plan && (
+                  <p className="text-sm text-slate-500 mt-1"><span className="font-medium text-amber-600">调整计划:</span> {r.adjusted_plan}</p>
+                )}
                 {r.lessons_learned && (
                   <p className="text-sm text-slate-500 mt-2"><span className="font-medium">教训:</span> {r.lessons_learned}</p>
                 )}
@@ -326,14 +679,50 @@ export default function DecisionDetail() {
       {/* 复盘表单弹窗 */}
       {showReviewForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowReviewForm(false)}>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-slate-800 dark:text-white mb-4">添加复盘记录</h3>
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-800 dark:text-white mb-4">
+              {reviewForm.is_progress_update ? '添加进展更新' : '添加复盘记录'}
+            </h3>
             <div className="space-y-3">
+              {/* 进展更新开关 */}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={reviewForm.is_progress_update}
+                  onChange={e => setReviewForm({ ...reviewForm, is_progress_update: e.target.checked })}
+                  className="rounded border-slate-300" />
+                <span className="text-slate-600 dark:text-slate-400">
+                  这是进展更新（决策仍在进行中，非最终结论）
+                </span>
+              </label>
+
               <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">实际结果</label>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  {reviewForm.is_progress_update ? '当前进展' : '实际结果'}
+                </label>
                 <textarea value={reviewForm.outcome} onChange={e => setReviewForm({ ...reviewForm, outcome: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={3} />
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2}
+                  placeholder={reviewForm.is_progress_update ? '目前的执行情况如何？' : '决策的实际结果如何？'} />
               </div>
+
+              {/* 进展说明（进展更新时显示） */}
+              {reviewForm.is_progress_update && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">详细进展说明</label>
+                  <textarea value={reviewForm.progress} onChange={e => setReviewForm({ ...reviewForm, progress: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2}
+                    placeholder="对比预期目标，目前进展如何？遇到了什么情况？" />
+                </div>
+              )}
+
+              {/* 调整计划（进展更新时显示） */}
+              {reviewForm.is_progress_update && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">调整计划</label>
+                  <textarea value={reviewForm.adjusted_plan} onChange={e => setReviewForm({ ...reviewForm, adjusted_plan: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2}
+                    placeholder="基于当前进展，下一步计划如何调整？" />
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">结果评分 (1-10)</label>
@@ -353,20 +742,30 @@ export default function DecisionDetail() {
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">经验教训</label>
-                <textarea value={reviewForm.lessons_learned} onChange={e => setReviewForm({ ...reviewForm, lessons_learned: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">后续行动</label>
-                <textarea value={reviewForm.next_steps} onChange={e => setReviewForm({ ...reviewForm, next_steps: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2} />
-              </div>
+
+              {/* 非进展更新时的额外字段 */}
+              {!reviewForm.is_progress_update && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">经验教训</label>
+                    <textarea value={reviewForm.lessons_learned} onChange={e => setReviewForm({ ...reviewForm, lessons_learned: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">后续行动</label>
+                    <textarea value={reviewForm.next_steps} onChange={e => setReviewForm({ ...reviewForm, next_steps: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-700 dark:border-slate-600 text-sm" rows={2} />
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex gap-3 mt-4">
-              <button onClick={handleAddReview} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">保存</button>
-              <button onClick={() => setShowReviewForm(false)} className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm">取消</button>
+              <button onClick={handleAddReview}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">
+                {reviewForm.is_progress_update ? '保存进展' : '保存复盘'}
+              </button>
+              <button onClick={() => setShowReviewForm(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm">取消</button>
             </div>
           </div>
         </div>
