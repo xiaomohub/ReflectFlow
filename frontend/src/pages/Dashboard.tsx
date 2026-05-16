@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  GitBranch, Rss, Inbox, RefreshCw, TrendingUp, AlertCircle, Star,
+  GitBranch, Rss, Inbox, RefreshCw, AlertCircle, Star,
 } from 'lucide-react';
 import { decisionsApi, articlesApi } from '../api/client';
 import type { Decision, Article } from '../api/client';
@@ -112,7 +112,7 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, to, color }: {
+function StatCard({ icon: Icon, label, value, sub: _sub, to, color }: {
   icon: React.ElementType; label: string; value: string; sub: string; to: string; color: string;
 }) {
   const colors: Record<string, string> = {
