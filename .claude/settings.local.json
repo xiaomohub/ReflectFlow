@@ -36,7 +36,10 @@
       "Bash(move *)",
       "Bash(cd *)",
       "Bash(echo \"EXIT_CODE: $?\")",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [
       "Bash(rm -rf *)",

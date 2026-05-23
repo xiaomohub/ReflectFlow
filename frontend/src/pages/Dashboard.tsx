@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom';
 import {
   GitBranch, Rss, Inbox, RefreshCw, AlertCircle, Star,
 } from 'lucide-react';
-import { decisionsApi, articlesApi } from '../api/client';
+import { decisionsApi, articlesApi, sourcesApi } from '../api/client';
 import type { Decision, Article } from '../api/client';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ total: 0, active: 0, completed: 0, abandoned: 0, due_reviews: 0 });
   const [dueReviews, setDueReviews] = useState<Decision[]>([]);
   const [topArticles, setTopArticles] = useState<Article[]>([]);
+  const [sourceCount, setSourceCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,10 +19,14 @@ export default function Dashboard() {
       decisionsApi.stats(),
       decisionsApi.dueReviews(),
       articlesApi.list({ sort_by: 'relevance_score', page_size: 5 }),
-    ]).then(([s, reviews, page]) => {
+      articlesApi.categories(),
+      sourcesApi.list(),
+    ]).then(([s, reviews, page, categories, sources]) => {
       setStats(s);
       setDueReviews(reviews);
       setTopArticles(page.items);
+      setUnreadCount(categories.unread);
+      setSourceCount(sources.length);
     }).catch(() => {
       setTopArticles([]);
     }).finally(() => setLoading(false));
@@ -43,8 +49,8 @@ export default function Dashboard() {
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-4 gap-6">
-        <StatCard icon={Rss} label="信息源" value="已配置" sub="管理信息源" to="/sources" color="blue" />
-        <StatCard icon={Inbox} label="待处理文章" value={topArticles.length.toString()} sub="AI 排序中" to="/inbox" color="purple" />
+        <StatCard icon={Rss} label="信息源" value={sourceCount.toString()} sub="已配置" to="/sources" color="blue" />
+        <StatCard icon={Inbox} label="待处理文章" value={unreadCount.toString()} sub="待处理未读" to="/inbox" color="purple" />
         <StatCard icon={GitBranch} label="进行中决策" value={stats.active.toString()} sub={`共 ${stats.total} 个决策`} to="/decisions" color="green" />
         <StatCard icon={RefreshCw} label="待复盘" value={stats.due_reviews.toString()} sub="到期需复盘" to="/review" color="amber" />
       </div>

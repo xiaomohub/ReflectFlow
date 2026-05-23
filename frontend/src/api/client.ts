@@ -89,10 +89,11 @@ export interface ArticleCategories {
 }
 
 export const articlesApi = {
-  list: (params?: { status?: string; is_read?: boolean; sort_by?: string; page?: number; page_size?: number; source_id?: number; tag?: string; domain?: string }) => {
+  list: (params?: { status?: string; is_read?: boolean; suggested_action?: string; sort_by?: string; page?: number; page_size?: number; source_id?: number; tag?: string; domain?: string }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set('status', params.status);
     if (params?.is_read !== undefined) q.set('is_read', String(params.is_read));
+    if (params?.suggested_action) q.set('suggested_action', params.suggested_action);
     if (params?.sort_by) q.set('sort_by', params.sort_by);
     if (params?.page) q.set('page', String(params.page));
     if (params?.page_size) q.set('page_size', String(params.page_size));

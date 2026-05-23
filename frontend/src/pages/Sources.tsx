@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, RefreshCw, Rss, Globe, Code, MessageCircle, Settings, Clock, Filter, Eye, ChevronDown, ChevronUp, Sparkles, Share2, Upload, X, AlertTriangle, CheckSquare, Square } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Rss, Globe, Code, MessageCircle, Settings, Clock, Filter, Eye, ChevronDown, ChevronUp, Share2, Upload, X, CheckSquare, Square } from 'lucide-react';
 import { sourcesApi, articlesApi, settingsApi } from '../api/client';
 import type { Source, AppSettings, Article } from '../api/client';
 
@@ -8,17 +8,25 @@ const typeIcons: Record<string, React.ElementType> = { rss: Rss, webpage: Globe,
 const typeLabels: Record<string, string> = { rss: 'RSS', webpage: '网页', api: 'API', xueqiu: '雪球', rsshub: 'RSSHub' };
 
 /** RSSHub 平台预设 */
-const RSSHUB_PRESETS = [
-  { id: 'bilibili_user',   label: 'B站UP主',     urlTemplate: (id: string) => `https://rsshub.app/bilibili/user/video/${id}`,       placeholder: 'UP主UID，如 123456', icon: '📺' },
-  { id: 'zhihu_people',    label: '知乎用户',     urlTemplate: (id: string) => `https://rsshub.app/zhihu/people/activities/${id}`,  placeholder: '用户主页路径，如 zhong-xian-wei-26', icon: '📝' },
-  { id: 'zhihu_zhuanlan',  label: '知乎专栏',     urlTemplate: (id: string) => `https://rsshub.app/zhihu/zhuanlan/${id}`,           placeholder: '专栏ID，如 c_123456789', icon: '📰' },
+type RsshubPreset = {
+  id: string;
+  label: string;
+  urlTemplate: (id?: string) => string;
+  placeholder: string;
+  icon: string;
+};
+
+const RSSHUB_PRESETS: RsshubPreset[] = [
+  { id: 'bilibili_user',   label: 'B站UP主',     urlTemplate: (id = '') => `https://rsshub.app/bilibili/user/video/${id}`,       placeholder: 'UP主UID，如 123456', icon: '📺' },
+  { id: 'zhihu_people',    label: '知乎用户',     urlTemplate: (id = '') => `https://rsshub.app/zhihu/people/activities/${id}`,  placeholder: '用户主页路径，如 zhong-xian-wei-26', icon: '📝' },
+  { id: 'zhihu_zhuanlan',  label: '知乎专栏',     urlTemplate: (id = '') => `https://rsshub.app/zhihu/zhuanlan/${id}`,           placeholder: '专栏ID，如 c_123456789', icon: '📰' },
   { id: 'zhihu_hotlist',   label: '知乎热榜',     urlTemplate: () => 'https://rsshub.app/zhihu/hotlist',                            placeholder: '', icon: '🔥' },
-  { id: 'xueqiu_user',     label: '雪球用户',     urlTemplate: (id: string) => `https://rsshub.app/xueqiu/user/${id}`,              placeholder: '用户ID，如 1234567890', icon: '💬' },
-  { id: 'weibo_user',      label: '微博用户',     urlTemplate: (id: string) => `https://rsshub.app/weibo/user/${id}`,               placeholder: '用户UID，如 1234567890', icon: '📱' },
+  { id: 'xueqiu_user',     label: '雪球用户',     urlTemplate: (id = '') => `https://rsshub.app/xueqiu/user/${id}`,              placeholder: '用户ID，如 1234567890', icon: '💬' },
+  { id: 'weibo_user',      label: '微博用户',     urlTemplate: (id = '') => `https://rsshub.app/weibo/user/${id}`,               placeholder: '用户UID，如 1234567890', icon: '📱' },
   { id: 'douban_movie',    label: '豆瓣电影',     urlTemplate: () => 'https://rsshub.app/douban/movie/playing',                     placeholder: '', icon: '🎬' },
-  { id: 'jike_user',       label: '即刻用户',     urlTemplate: (id: string) => `https://rsshub.app/jike/user/${id}`,                placeholder: '用户ID', icon: '⚡' },
-  { id: 'custom',          label: '自定义路由',   urlTemplate: (id: string) => id,                                                    placeholder: '完整 RSSHub URL', icon: '🔗' },
-] as const;
+  { id: 'jike_user',       label: '即刻用户',     urlTemplate: (id = '') => `https://rsshub.app/jike/user/${id}`,                placeholder: '用户ID', icon: '⚡' },
+  { id: 'custom',          label: '自定义路由',   urlTemplate: (id = '') => id,                                                    placeholder: '完整 RSSHub URL', icon: '🔗' },
+];
 
 /** JSON 导入模板示例 */
 const sampleImportJson = JSON.stringify([

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Filter, Sparkles, Eye, Star, GitBranch, Trash2, ChevronLeft, ChevronRight, CheckSquare, Square, Archive, Globe, ExternalLink, AlertTriangle, X } from 'lucide-react';
-import { articlesApi, sourcesApi, decisionsApi, contextsApi } from '../api/client';
-import type { Article, ArticleCategories, Source, Decision, UserContext } from '../api/client';
+import { articlesApi, sourcesApi, contextsApi } from '../api/client';
+import type { Article, Source, UserContext } from '../api/client';
 
 const ACTION_TABS = [
   { key: 'all', label: '全部' },
@@ -29,10 +29,6 @@ export default function Inbox() {
   // Batch mode
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  // Decision association
-  const [decisions, setDecisions] = useState<Decision[]>([]);
-  const [showDecisionPicker, setShowDecisionPicker] = useState(false);
-  const [pendingArticleId, setPendingArticleId] = useState<number | null>(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -55,7 +51,6 @@ export default function Inbox() {
 
   useEffect(() => {
     loadArticles();
-    decisionsApi.list({ page: 1, page_size: 100 }).then(r => setDecisions(r.items));
   }, [sortBy, page, actionTab, domainFilter, sourceFilter]);
 
   // 切换筛选条件时清除批量选择
@@ -67,21 +62,29 @@ export default function Inbox() {
   const loadArticles = async () => {
     setLoading(true);
     const statusMap: Record<string, string | undefined> = {
-      all: undefined,
-      read: 'new',
-      decide: undefined,
-      archive: 'archived',
-      ignore: undefined,
+      all: 'all',
+      read: 'all',
+      decide: 'all',
+      archive: 'all',
+      ignore: 'all',
+      read_articles: 'all',
     };
     const isReadMap: Record<string, boolean | undefined> = {
       read_articles: true,
+    };
+    const actionMap: Record<string, string | undefined> = {
+      read: 'read',
+      decide: 'decide',
+      archive: 'archive',
+      ignore: 'ignore',
     };
     const result = await articlesApi.list({
       sort_by: sortBy,
       page,
       page_size: 20,
-      ...(actionTab !== 'all' ? { status: statusMap[actionTab] } : {}),
+      ...(statusMap[actionTab] ? { status: statusMap[actionTab] } : {}),
       ...(isReadMap[actionTab] !== undefined ? { is_read: isReadMap[actionTab] } : {}),
+      ...(actionMap[actionTab] ? { suggested_action: actionMap[actionTab] } : {}),
       ...(domainFilter ? { domain: domainFilter } : {}),
       ...(sourceFilter ? { source_id: sourceFilter } : {}),
     });
@@ -144,11 +147,11 @@ export default function Inbox() {
 
   const buildBatchFilters = () => ({
     select_all: selectAllMode,
-    status: actionTab !== 'all' ? ({
-      read: 'new', archive: 'archived',
-    } as Record<string, string | undefined>)[actionTab] : undefined,
+    status: undefined,
     is_read: actionTab === 'read_articles' ? true : undefined,
-    suggested_action: (['decide', 'ignore'] as const).includes(actionTab as any) ? actionTab : undefined,
+    suggested_action: (['read', 'decide', 'archive', 'ignore'] as const).includes(actionTab as any)
+      ? actionTab
+      : undefined,
     domain: domainFilter || undefined,
     source_id: sourceFilter || undefined,
   });
@@ -280,36 +283,46 @@ export default function Inbox() {
             </button>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {domains.map(d => {
             const isActive = domainFilter === d.domain;
-            // 使用领域名称的首字母作为标识色
             const colors = [
-              'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
-              'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
-              'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100',
-              'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
-              'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100',
-              'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100',
-              'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100',
-              'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100',
+              'from-blue-50 to-sky-50 border-blue-200/70 text-blue-700 dark:from-blue-900/20 dark:to-sky-900/20 dark:border-blue-800 dark:text-blue-300',
+              'from-emerald-50 to-teal-50 border-emerald-200/70 text-emerald-700 dark:from-emerald-900/20 dark:to-teal-900/20 dark:border-emerald-800 dark:text-emerald-300',
+              'from-purple-50 to-violet-50 border-purple-200/70 text-purple-700 dark:from-purple-900/20 dark:to-violet-900/20 dark:border-purple-800 dark:text-purple-300',
+              'from-amber-50 to-orange-50 border-amber-200/70 text-amber-700 dark:from-amber-900/20 dark:to-orange-900/20 dark:border-amber-800 dark:text-amber-300',
+              'from-rose-50 to-pink-50 border-rose-200/70 text-rose-700 dark:from-rose-900/20 dark:to-pink-900/20 dark:border-rose-800 dark:text-rose-300',
+              'from-cyan-50 to-sky-50 border-cyan-200/70 text-cyan-700 dark:from-cyan-900/20 dark:to-sky-900/20 dark:border-cyan-800 dark:text-cyan-300',
+              'from-orange-50 to-amber-50 border-orange-200/70 text-orange-700 dark:from-orange-900/20 dark:to-amber-900/20 dark:border-orange-800 dark:text-orange-300',
+              'from-teal-50 to-cyan-50 border-teal-200/70 text-teal-700 dark:from-teal-900/20 dark:to-cyan-900/20 dark:border-teal-800 dark:text-teal-300',
             ];
             const colorIdx = d.id % colors.length;
             return (
               <button
                 key={d.id}
                 onClick={() => { setDomainFilter(isActive ? '' : d.domain); setPage(1); }}
-                className={`text-sm px-4 py-2 rounded-lg border-2 transition-all font-medium ${
+                className={`group text-left rounded-xl border p-3.5 bg-gradient-to-br transition-all duration-200 active:scale-[0.98] ${
                   isActive
-                    ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
-                    : `${colors[colorIdx]} border-transparent`
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-[0_8px_24px_rgba(37,99,235,0.35)] -translate-y-0.5'
+                    : `${colors[colorIdx]} hover:shadow-[0_10px_26px_rgba(15,23,42,0.10)] hover:-translate-y-1`
                 }`}
                 title={d.description}
               >
-                {d.domain}
-                {d.current_focus && !isActive && (
-                  <span className="ml-1.5 text-xs opacity-60">· {d.current_focus.slice(0, 12)}</span>
-                )}
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-sm leading-5 truncate">{d.domain}</p>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${
+                    isActive
+                      ? 'bg-white/25 text-white'
+                      : 'bg-white/70 dark:bg-slate-900/30'
+                  }`}>
+                    P{d.priority}
+                  </span>
+                </div>
+                <p className={`mt-1 text-xs leading-5 max-h-10 overflow-hidden ${
+                  isActive ? 'text-blue-50/95' : 'opacity-80 group-hover:opacity-100'
+                }`}>
+                  {d.current_focus || d.description || '点击按该领域筛选文章'}
+                </p>
               </button>
             );
           })}

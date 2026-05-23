@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/articles", tags=["文章"])
 def list_articles(
     status: str = Query("new", description="筛选状态: new/reviewed/archived/actioned/all"),
     is_read: bool = Query(None, description="按已读状态筛选"),
+    suggested_action: str = Query(None, description="按 AI 建议操作筛选: read/archive/decide/ignore"),
     sort_by: str = Query("created_at", description="排序字段"),
     order: str = Query("desc", description="排序方向"),
     source_id: int = Query(None, description="按信息源筛选"),
@@ -39,6 +40,9 @@ def list_articles(
 
     if is_read is not None:
         query = query.filter(Article.is_read == is_read)
+
+    if suggested_action:
+        query = query.filter(Article.suggested_action == suggested_action)
 
     if source_id:
         query = query.filter(Article.source_id == source_id)
@@ -121,9 +125,9 @@ def get_article_categories(db: Session = Depends(get_db)):
         for st, count in status_counts
     ]
 
-    # 按关注领域统计 - 遍历已过滤文章，匹配 relevance_reason 和 ai_analysis
+    # 按关注领域统计 - 遍历全部文章，避免未执行 AI 过滤时统计为空
     domains = db.query(UserContext).filter(UserContext.is_active == True).all()
-    filtered_articles = db.query(Article).filter(Article.filtered_at.isnot(None)).all()
+    filtered_articles = db.query(Article).all()
     by_domain = []
     for domain in domains:
         domain_lower = domain.domain.lower()
