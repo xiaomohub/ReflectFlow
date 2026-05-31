@@ -61,12 +61,19 @@ export default function Notes() {
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults(null);
+      setError(null);
       return;
     }
     setLoading(true);
-    const results = await notesApi.search(searchQuery);
-    setSearchResults(results);
-    setLoading(false);
+    setError(null);
+    try {
+      const results = await notesApi.search(searchQuery);
+      setSearchResults(results);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '搜索失败');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (e: React.MouseEvent, id: number) => {
@@ -117,75 +124,97 @@ export default function Notes() {
     return acc;
   }, {});
 
+  const extractedCount = displayedNotes.filter(n => n.ai_skills?.length > 0).length;
+
+  const categoryNameById = categories.reduce<Record<number, string>>((acc, cat) => {
+    acc[cat.id] = cat.name;
+    return acc;
+  }, {});
+
+  const activeCategoryName = selectedCategory === null
+    ? '全部笔记'
+    : (categoryNameById[selectedCategory] || '未知分类');
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">笔记</h2>
-          <p className="text-slate-500 mt-1">记录思考、提炼技能</p>
+      <section className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-gradient-to-br from-blue-50 via-white to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">笔记</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">记录思考、提炼技能</p>
+          </div>
+          <button
+            onClick={() => navigate('/notes/new')}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+          >
+            <Plus className="h-4 w-4" />
+            新建笔记
+          </button>
         </div>
-        <button
-          onClick={() => navigate('/notes/new')}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
-        >
-          <Plus className="w-4 h-4" />新建笔记
-        </button>
-      </div>
-
-      {/* 统计条 */}
-      <div className="flex items-center gap-6 text-sm bg-white dark:bg-slate-800 rounded-xl px-5 py-3 shadow-sm border border-slate-200 dark:border-slate-700">
-        <span className="text-slate-500">共 <strong className="text-slate-800 dark:text-white text-base">{notes.length}</strong> 篇笔记</span>
-        <span className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
-        <span className="text-slate-500">
-          总计 <strong className="text-slate-800 dark:text-white">{totalWords.toLocaleString()}</strong> 字
-        </span>
-        <span className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
-        <span className="text-slate-500">
-          <strong className="text-slate-800 dark:text-white">{categories.length}</strong> 个分类
-        </span>
-        {displayedNotes.filter(n => n.ai_skills?.length > 0).length > 0 && (
-          <>
-            <span className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
-            <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" />
-              <strong>{displayedNotes.filter(n => n.ai_skills?.length > 0).length}</strong> 篇已提取技能
-            </span>
-          </>
-        )}
-      </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-200/70 bg-white/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <p className="text-xs text-slate-500 dark:text-slate-400">笔记数量</p>
+            <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">{notes.length}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/70 bg-white/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <p className="text-xs text-slate-500 dark:text-slate-400">总字数</p>
+            <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">{totalWords.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/70 bg-white/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <p className="text-xs text-slate-500 dark:text-slate-400">分类数量</p>
+            <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">{categories.length}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/70 bg-white/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <p className="text-xs text-slate-500 dark:text-slate-400">技能提取</p>
+            <p className="mt-1 inline-flex items-center gap-1 text-lg font-semibold text-amber-600 dark:text-amber-400">
+              <Sparkles className="h-4 w-4" />
+              {extractedCount}
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* 搜索 */}
-      <div className="flex gap-2">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
-            placeholder="搜索笔记..."
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm"
+            placeholder="搜索标题、内容或标签..."
+            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
           />
         </div>
-        <button
-          onClick={handleSearch}
-          className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded-lg text-sm hover:bg-slate-200 transition-colors"
-        >
-          搜索
-        </button>
-        {searchResults !== null && (
+        <div className="flex items-center gap-2 sm:shrink-0">
           <button
-            onClick={() => { setSearchQuery(''); setSearchResults(null); }}
-            className="px-4 py-2 text-sm text-blue-500 hover:text-blue-600"
+            onClick={handleSearch}
+            className="rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
           >
-            清除搜索
+            搜索
           </button>
-        )}
+          {searchResults !== null && (
+            <button
+              onClick={() => { setSearchQuery(''); setSearchResults(null); }}
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-blue-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+            >
+              清除
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-4 text-sm text-slate-500 dark:text-slate-400 md:flex-row md:items-center md:justify-between">
+        <p>
+          当前分类：<span className="font-medium text-slate-700 dark:text-slate-200">{activeCategoryName}</span>
+          {searchResults !== null && <span className="ml-2">| 搜索结果 {searchResults.length} 篇</span>}
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* 分类侧栏 */}
-        <div className="w-56 shrink-0">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4">
+        <div className="w-full shrink-0 lg:w-64">
+          <div className="lg:sticky lg:top-4 rounded-xl bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">分类</h3>
               <button
@@ -281,10 +310,6 @@ export default function Notes() {
 
         {/* 笔记列表 */}
         <div className="flex-1 min-w-0">
-          {searchResults !== null && (
-            <p className="text-sm text-slate-500 mb-4">搜索结果: {searchResults.length} 篇</p>
-          )}
-
           {error ? (
             <div className="text-center py-16">
               <p className="text-red-500 mb-2">{error}</p>
@@ -293,7 +318,7 @@ export default function Notes() {
           ) : loading ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {displayedNotes.map(note => (
                 <div
                   key={note.id}
@@ -305,9 +330,9 @@ export default function Notes() {
                       {/* 标题行 */}
                       <div className="flex items-center gap-2 mb-1.5">
                         <h3 className="font-medium text-slate-800 dark:text-white truncate">{note.title}</h3>
-                        {note.category_id && categories.find(c => c.id === note.category_id) && (
+                        {note.category_id && categoryNameById[note.category_id] && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 shrink-0">
-                            {categories.find(c => c.id === note.category_id)!.name}
+                            {categoryNameById[note.category_id]}
                           </span>
                         )}
                       </div>
@@ -344,7 +369,7 @@ export default function Notes() {
                     </div>
 
                     {/* 操作按钮 */}
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-0.5 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <a
                         href={notesApi.download(note.id)}
                         onClick={e => e.stopPropagation()}

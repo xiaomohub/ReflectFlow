@@ -103,5 +103,95 @@ def init_db():
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE decisions ADD COLUMN parent_decision_id INTEGER REFERENCES decisions(id)"))
                 conn.commit()
+
+        # 迁移10: decisions.root_decision_id + node_order
+        dec_cols = [c["name"] for c in inspector.get_columns("decisions")]
+        if "root_decision_id" not in dec_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE decisions ADD COLUMN root_decision_id INTEGER REFERENCES decisions(id)"))
+                conn.commit()
+        if "node_order" not in dec_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE decisions ADD COLUMN node_order INTEGER DEFAULT 0"))
+                conn.commit()
+
+        # 回填 root_decision_id，建立历史数据的决策树根引用
+        with engine.connect() as conn:
+            conn.execute(text("""
+                WITH RECURSIVE decision_tree(id, root_id) AS (
+                    SELECT id, id
+                    FROM decisions
+                    WHERE parent_decision_id IS NULL
+                    UNION ALL
+                    SELECT d.id, dt.root_id
+                    FROM decisions d
+                    JOIN decision_tree dt ON d.parent_decision_id = dt.id
+                )
+                UPDATE decisions
+                SET root_decision_id = (
+                    SELECT dt.root_id
+                    FROM decision_tree dt
+                    WHERE dt.id = decisions.id
+                )
+                WHERE root_decision_id IS NULL
+            """))
+            conn.execute(text("UPDATE decisions SET root_decision_id = id WHERE root_decision_id IS NULL"))
+            conn.commit()
+
+        # 迁移11: 新增 app_users 表（权限人员）
+        table_names = inspector.get_table_names()
+        if "app_users" not in table_names:
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    CREATE TABLE app_users (
+                        id INTEGER PRIMARY KEY,
+                        username VARCHAR(100) NOT NULL UNIQUE,
+                        display_name VARCHAR(200) NOT NULL,
+                        role VARCHAR(20) DEFAULT 'normal',
+                        is_active BOOLEAN DEFAULT 1,
+                        created_at TIMESTAMP,
+                        updated_at TIMESTAMP
+                    )
+                """))
+                conn.commit()
+
+        # 初始化默认管理员
+        with engine.connect() as conn:
+            admin_exists = conn.execute(
+                text("SELECT id FROM app_users WHERE username='admin' LIMIT 1")
+            ).first()
+            if not admin_exists:
+                conn.execute(
+                    text(
+                        "INSERT INTO app_users (username, display_name, role, is_active, created_at, updated_at) "
+                        "VALUES ('admin', '系统管理员', 'admin', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                    )
+                )
+                conn.commit()
+
+        # 迁移12: owner_user_id 列（按人员隔离）
+        def ensure_owner_column(table_name: str):
+            current_cols = [c["name"] for c in inspect(engine).get_columns(table_name)]
+            if "owner_user_id" not in current_cols:
+                with engine.connect() as conn:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE {table_name} "
+                            "ADD COLUMN owner_user_id INTEGER REFERENCES app_users(id) DEFAULT 1"
+                        )
+                    )
+                    conn.execute(text(f"UPDATE {table_name} SET owner_user_id=1 WHERE owner_user_id IS NULL"))
+                    conn.commit()
+
+        for table in [
+            "user_contexts",
+            "decisions",
+            "decision_reviews",
+            "decision_changelogs",
+            "decision_categories",
+            "notes",
+            "note_categories",
+        ]:
+            ensure_owner_column(table)
     except Exception:
         pass  # 表可能还不存在，忽略

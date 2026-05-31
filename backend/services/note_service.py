@@ -5,21 +5,25 @@ import os
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from models.models import Note, NoteCategory
+from models.models import AppUser, Note, NoteCategory
 
 
 class NoteService:
     """笔记服务"""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: AppUser):
         self.db = db
+        self.current_user = current_user
         self.api_key = os.getenv("LLM_API_KEY", "")
         self.api_base = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
         self.model = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
     def extract_skills(self, note_id: int) -> list[dict]:
         """从笔记中提取决策原则、方法论、经验教训"""
-        note = self.db.query(Note).filter(Note.id == note_id).first()
+        note = self.db.query(Note).filter(
+            Note.id == note_id,
+            Note.owner_user_id == self.current_user.id,
+        ).first()
         if not note:
             return []
 
@@ -102,7 +106,10 @@ class NoteService:
 
         notes = (
             self.db.query(Note)
-            .filter(or_(title_match, content_match))
+            .filter(
+                Note.owner_user_id == self.current_user.id,
+                or_(title_match, content_match),
+            )
             .order_by(
                 case((title_match, 0), else_=1),
                 Note.updated_at.desc(),
@@ -138,7 +145,10 @@ class NoteService:
             return []
         keywords = set(context.lower().split())
         all_skills = []
-        notes = self.db.query(Note).filter(Note.ai_skills.isnot(None)).all()
+        notes = self.db.query(Note).filter(
+            Note.owner_user_id == self.current_user.id,
+            Note.ai_skills.isnot(None),
+        ).all()
         for note in notes:
             if note.ai_skills:
                 for skill in note.ai_skills:

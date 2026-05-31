@@ -3,11 +3,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from auth import require_admin
 from models.database import get_db
 from models.models import SourceCategory, Source
 from schemas import SourceCategoryCreate, SourceCategoryUpdate, SourceCategoryResponse
 
-router = APIRouter(prefix="/api/source-categories", tags=["信息源分类"])
+router = APIRouter(prefix="/api/source-categories", tags=["信息源分类"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=list[SourceCategoryResponse])

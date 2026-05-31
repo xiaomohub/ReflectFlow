@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from auth import require_admin
 from models.database import get_db
 from models.models import Article, Source, UserContext
 from schemas import (
@@ -16,7 +17,7 @@ from services.source_fetcher import SourceFetcher
 from utils import beijing_now
 from schemas import BatchUpdateRequest, BatchDeleteRequest
 
-router = APIRouter(prefix="/api/articles", tags=["文章"])
+router = APIRouter(prefix="/api/articles", tags=["文章"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=ArticlePageResponse)

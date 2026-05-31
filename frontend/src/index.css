@@ -16,3 +16,190 @@ body {
     background: #0f172a;
   }
 }
+
+.yuque-markdown-display {
+  cursor: text;
+}
+
+.yuque-mdx-shell {
+  background: #f0fdf4;
+  border-radius: 12px;
+}
+
+.note-markdown-toolbar {
+  border-bottom: 1px solid #bbf7d0;
+  padding-bottom: 10px;
+}
+
+.note-md-btn {
+  border: 1px solid #a7f3d0;
+  background: #ecfdf3;
+  color: #14532d;
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.note-md-btn:hover {
+  background: #dcfce7;
+}
+
+.note-markdown-input {
+  min-height: 620px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  background: #f7fff9;
+  color: #0f172a;
+  line-height: 1.8;
+  font-size: 15px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  padding: 16px;
+  outline: none;
+  resize: vertical;
+}
+
+.note-markdown-input:focus {
+  border-color: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.2);
+}
+
+.yuque-markdown-body {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.yuque-markdown-body p,
+.yuque-markdown-body li {
+  color: #0f172a;
+}
+
+.yuque-markdown-body h1,
+.yuque-markdown-body h2,
+.yuque-markdown-body h3 {
+  margin-top: 1.4em;
+  margin-bottom: 0.7em;
+  line-height: 1.4;
+  color: #0b1220;
+}
+
+.yuque-markdown-body blockquote {
+  margin: 1em 0;
+  border-left: 3px solid #6ee7b7;
+  padding: 0.6em 1em;
+  background: #ecfdf5;
+  color: #14532d;
+}
+
+.yuque-markdown-body code {
+  background: #dcfce7;
+  border-radius: 6px;
+  padding: 0.15em 0.35em;
+  font-size: 0.9em;
+  color: #14532d;
+}
+
+.yuque-markdown-body pre {
+  margin: 1em 0;
+  border-radius: 10px;
+  background: #0f172a;
+  overflow-x: auto;
+}
+
+.yuque-markdown-body pre code {
+  background: transparent;
+  color: #e2e8f0;
+  padding: 1em;
+  display: block;
+}
+
+/* Force eye-care green theme on note editor page */
+.note-editor-eye-care {
+  color-scheme: light;
+  background: #ecfdf3 !important;
+}
+
+.note-editor-eye-care .note-toolbar {
+  background: #f0fdf4 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.note-editor-eye-care .note-paper {
+  background: #f7fff9 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.note-editor-eye-care .note-outline {
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.note-editor-eye-care .note-display {
+  background: #f7fff9 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.note-editor-eye-care .note-editor-shell {
+  background: #f7fff9 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.note-editor-eye-care .yuque-markdown-body,
+.note-editor-eye-care .yuque-markdown-body p,
+.note-editor-eye-care .yuque-markdown-body li,
+.note-editor-eye-care .yuque-markdown-body h1,
+.note-editor-eye-care .yuque-markdown-body h2,
+.note-editor-eye-care .yuque-markdown-body h3 {
+  color: #0f172a !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .yuque-markdown-display {
+    background: #0f172a;
+  }
+
+  .yuque-mdx-shell {
+    background: #0f172a;
+  }
+
+  .yuque-markdown-body {
+    color: #e2e8f0;
+  }
+
+  .yuque-markdown-body p,
+  .yuque-markdown-body li,
+  .yuque-markdown-body h1,
+  .yuque-markdown-body h2,
+  .yuque-markdown-body h3 {
+    color: #e2e8f0;
+  }
+
+  .yuque-markdown-body blockquote {
+    border-left-color: #64748b;
+    background: #1e293b;
+    color: #cbd5e1;
+  }
+
+  .yuque-markdown-body code {
+    background: #1e293b;
+    color: #f1f5f9;
+  }
+
+  /* Keep eye-care theme even under dark preference */
+  .note-editor-eye-care {
+    color-scheme: light;
+    background: #ecfdf3 !important;
+  }
+
+  .note-editor-eye-care .note-toolbar,
+  .note-editor-eye-care .note-paper,
+  .note-editor-eye-care .note-outline,
+  .note-editor-eye-care .note-display,
+  .note-editor-eye-care .note-editor-shell,
+  .note-editor-eye-care .note-markdown-input {
+    background: #f7fff9 !important;
+    border-color: #a7f3d0 !important;
+    color: #0f172a !important;
+  }
+}

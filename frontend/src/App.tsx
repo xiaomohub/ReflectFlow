@@ -11,6 +11,7 @@ import DecisionDetail from './pages/DecisionDetail';
 import Review from './pages/Review';
 import Notes from './pages/Notes';
 import NoteEditor from './pages/NoteEditor';
+import Users from './pages/Users';
 
 function Page({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/notes/new" element={<Page><NoteEditor /></Page>} />
           <Route path="/notes/:id" element={<Page><NoteEditor /></Page>} />
           <Route path="/review" element={<Page><Review /></Page>} />
+          <Route path="/users" element={<Page><Users /></Page>} />
         </Routes>
       </Layout>
     </BrowserRouter>

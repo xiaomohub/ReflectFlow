@@ -3,11 +3,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from auth import require_admin
 from models.database import get_db
 from models.models import Setting
 from schemas import SettingUpdate, SettingResponse
 
-router = APIRouter(prefix="/api/settings", tags=["系统设置"])
+router = APIRouter(prefix="/api/settings", tags=["系统设置"], dependencies=[Depends(require_admin)])
 
 DEFAULT_SETTINGS = {
     "auto_fetch_enabled": "false",

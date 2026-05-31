@@ -25,7 +25,6 @@ function timeAgo(dateStr: string): string {
 
 export default function Decisions() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
-  const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [stats, setStats] = useState({ total: 0, active: 0, completed: 0, abandoned: 0, due_reviews: 0 });
@@ -57,7 +56,6 @@ export default function Decisions() {
       page_size: 50,
     });
     setDecisions(result.items);
-    setTotal(result.total);
     setTotalPages(result.total_pages);
     setLoading(false);
   };
@@ -161,7 +159,7 @@ export default function Decisions() {
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => { setSelectedCategory(null); setPage(1); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             selectedCategory === null
               ? 'bg-blue-500 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -184,7 +182,7 @@ export default function Decisions() {
             ) : (
               <button
                 onClick={() => { setSelectedCategory(cat.id); setPage(1); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   selectedCategory === cat.id
                     ? 'bg-blue-500 text-white shadow-sm'
                     : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -257,7 +255,7 @@ export default function Decisions() {
                 <div className="flex-1 p-3 space-y-3 overflow-y-auto max-h-[600px]">
                   {items.map(d => (
                     <div key={d.id} onClick={() => navigate(`/decisions/${d.id}`)}
-                      className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all cursor-pointer"
+                      className="group relative bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all cursor-pointer"
                     >
                       {/* 分类标签 + 时间 */}
                       <div className="flex items-center gap-2 mb-2">

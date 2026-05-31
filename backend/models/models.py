@@ -7,6 +7,19 @@ from models.database import Base
 from utils import beijing_now
 
 
+class AppUser(Base):
+    """系统人员（管理员/普通人员）"""
+    __tablename__ = "app_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True, comment="登录名/唯一标识")
+    display_name = Column(String(200), nullable=False, comment="显示名称")
+    role = Column(String(20), default="normal", comment="角色：admin/normal")
+    is_active = Column(Boolean, default=True, comment="是否启用")
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
+
+
 class Source(Base):
     """信息源配置"""
     __tablename__ = "sources"
@@ -63,6 +76,7 @@ class UserContext(Base):
     __tablename__ = "user_contexts"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     domain = Column(String(200), nullable=False, comment="领域名称")
     description = Column(Text, default="", comment="领域描述")
     current_focus = Column(Text, default="", comment="当前重点关注方向")
@@ -78,6 +92,7 @@ class Decision(Base):
     __tablename__ = "decisions"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     title = Column(String(500), nullable=False)
     description = Column(Text, default="")
     context = Column(Text, default="", comment="触发此决策的背景")
@@ -88,6 +103,8 @@ class Decision(Base):
     article_id = Column(Integer, ForeignKey("articles.id"), nullable=True, comment="触发文章")
     category_id = Column(Integer, ForeignKey("decision_categories.id"), nullable=True, comment="所属分类")
     parent_decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=True, comment="父决策（决策树串联）")
+    root_decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=True, index=True, comment="树根决策")
+    node_order = Column(Integer, default=0, comment="同层顺序")
     related_domains = Column(JSON, default=list, comment="关联领域")
     children = relationship("Decision", backref="parent", remote_side="Decision.id", viewonly=True)
 
@@ -119,6 +136,7 @@ class DecisionReview(Base):
     __tablename__ = "decision_reviews"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=False)
 
     review_date = Column(DateTime, default=lambda: beijing_now())
@@ -141,6 +159,7 @@ class DecisionChangeLog(Base):
     __tablename__ = "decision_changelogs"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=False, index=True)
     changed_at = Column(DateTime, default=lambda: beijing_now(), comment="变更时间")
     field_name = Column(String(100), nullable=False, comment="变更字段")
@@ -154,6 +173,7 @@ class DecisionCategory(Base):
     __tablename__ = "decision_categories"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     name = Column(String(200), nullable=False, comment="分类名称")
     parent_id = Column(Integer, ForeignKey("decision_categories.id"), nullable=True, comment="父分类")
     sort_order = Column(Integer, default=0, comment="排序")
@@ -167,6 +187,7 @@ class NoteCategory(Base):
     __tablename__ = "note_categories"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     name = Column(String(200), nullable=False, comment="分类名称")
     parent_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True, comment="父分类")
     sort_order = Column(Integer, default=0, comment="排序")
@@ -180,6 +201,7 @@ class Note(Base):
     __tablename__ = "notes"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, default=1, index=True, comment="所属人员")
     title = Column(String(500), nullable=False, comment="标题")
     content = Column(Text, default="", comment="Markdown 内容")
     category_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True, comment="所属分类")

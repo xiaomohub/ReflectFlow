@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from models.database import init_db, SessionLocal
 from models.models import Setting
-from routers import sources, articles, contexts, decisions, settings, notes, skills, source_categories
+from routers import sources, articles, contexts, decisions, settings, notes, skills, source_categories, users
 from utils import beijing_now
 
 
@@ -104,6 +104,7 @@ app.include_router(settings.router)
 app.include_router(notes.router)
 app.include_router(skills.router)
 app.include_router(source_categories.router)
+app.include_router(users.router)
 
 
 @app.get("/api/health")

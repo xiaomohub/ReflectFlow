@@ -55,7 +55,7 @@ export default function NewDecision() {
   const handleSave = async () => {
     if (!title.trim()) { alert('请输入决策标题'); return; }
     setSaving(true);
-    const d = await decisionsApi.create({
+    const payload: Partial<Decision> = {
       title: title.trim(),
       context,
       original_context: context,
@@ -70,9 +70,17 @@ export default function NewDecision() {
       status: 'draft',
       ai_advice: aiAdviceResult?.advice || '',
       ai_advice_used: false,
-      parent_decision_id: parentId ? Number(parentId) : null,
-    } as Partial<Decision>);
-    navigate(`/decisions/${d.id}`, { replace: true });
+    };
+    try {
+      const d = parentId
+        ? await decisionsApi.createChild(Number(parentId), payload)
+        : await decisionsApi.create(payload);
+      navigate(`/decisions/${d.id}`, { replace: true });
+    } catch (e) {
+      alert('创建决策失败: ' + (e instanceof Error ? e.message : '未知错误'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAiAdvice = async () => {
@@ -159,7 +167,7 @@ export default function NewDecision() {
               <div className="flex flex-wrap gap-2 mt-1">
                 {contexts.map(c => (
                   <button key={c.id} onClick={() => toggleDomain(c.domain)}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                       relatedDomains.includes(c.domain)
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                         : 'bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200'

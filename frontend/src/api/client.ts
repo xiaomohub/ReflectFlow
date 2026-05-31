@@ -1,10 +1,28 @@
 /** API 客户端 - 与后端 FastAPI 交互 */
 
 const BASE = '';  // 通过 Vite proxy 代理
+const CURRENT_USER_KEY = 'rf_current_user_id';
+
+export function getCurrentUserId(): number {
+  if (typeof window === 'undefined') return 1;
+  const raw = window.localStorage.getItem(CURRENT_USER_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+export function setCurrentUserId(userId: number) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(CURRENT_USER_KEY, String(userId));
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const currentUserId = getCurrentUserId();
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Id': String(currentUserId),
+      ...options?.headers,
+    },
     ...options,
   });
   if (!res.ok) {
@@ -13,6 +31,25 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   return res.json();
 }
+
+// ===== 人员与权限 =====
+export interface AppUser {
+  id: number;
+  username: string;
+  display_name: string;
+  role: 'admin' | 'normal';
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const usersApi = {
+  me: () => request<AppUser>('/api/users/me'),
+  active: () => request<AppUser[]>('/api/users/active'),
+  list: () => request<AppUser[]>('/api/users/'),
+  create: (data: Partial<AppUser>) => request<AppUser>('/api/users/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<AppUser>) => request<AppUser>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+};
 
 // ===== 信息源 =====
 export interface SourceCategory {
@@ -180,6 +217,8 @@ export interface Decision {
   article_id: number | null;
   category_id: number | null;
   parent_decision_id: number | null;
+  root_decision_id: number | null;
+  node_order: number;
   related_domains: string[];
   options: DecisionOption[];
   chosen_option: string;
@@ -249,6 +288,19 @@ export interface DecisionPage {
   total_pages: number;
 }
 
+export interface DecisionTreeNode {
+  id: number;
+  title: string;
+  status: string;
+  confidence_score: number;
+  parent_decision_id: number | null;
+  root_decision_id: number | null;
+  node_order: number;
+  next_review_date: string | null;
+  created_at: string;
+  children: DecisionTreeNode[];
+}
+
 export const decisionsApi = {
   list: (params?: { status?: string; category_id?: number; page?: number; page_size?: number }) => {
     const q = new URLSearchParams();
@@ -270,8 +322,14 @@ export const decisionsApi = {
   getChangeLog: (decisionId: number) => request<DecisionChangeLog[]>(`/api/decisions/${decisionId}/changelog`),
   aiAdvice: (data: { title: string; context: string; options: DecisionOption[]; related_domains: string[]; previous_decision_ids?: number[] }) =>
     request<AIAdviceResponse>('/api/decisions/ai-advice', { method: 'POST', body: JSON.stringify(data) }),
+  getPath: (decisionId: number) =>
+    request<Decision[]>(`/api/decisions/${decisionId}/path`),
+  getTree: (decisionId: number, fromRoot = true) =>
+    request<DecisionTreeNode>(`/api/decisions/${decisionId}/tree?from_root=${fromRoot}`),
   getChildren: (decisionId: number) =>
     request<Decision[]>(`/api/decisions/${decisionId}/children`),
+  createChild: (decisionId: number, data: Partial<Decision>) =>
+    request<Decision>(`/api/decisions/${decisionId}/children`, { method: 'POST', body: JSON.stringify(data) }),
   deleteReview: (decisionId: number, reviewId: number) =>
     request(`/api/decisions/${decisionId}/reviews/${reviewId}`, { method: 'DELETE' }),
   // 分类

@@ -3,7 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from auth import get_current_user
 from models.database import get_db
+from models.models import AppUser, Decision
 from schemas import (
     SkillsAnalysisRequest, SkillsAnalysisResponse, PersonaAnalysis,
 )
@@ -29,7 +31,11 @@ def list_personas():
 
 
 @router.post("/analyze", response_model=SkillsAnalysisResponse)
-def analyze_decision(data: SkillsAnalysisRequest, db: Session = Depends(get_db)):
+def analyze_decision(
+    data: SkillsAnalysisRequest,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
     """对决策进行多视角人格分析"""
     service = SkillsService(db)
 
@@ -37,6 +43,12 @@ def analyze_decision(data: SkillsAnalysisRequest, db: Session = Depends(get_db))
     persona_ids = data.persona_ids if data.persona_ids else None
 
     if data.decision_id:
+        decision = db.query(Decision).filter(
+            Decision.id == data.decision_id,
+            Decision.owner_user_id == current_user.id,
+        ).first()
+        if not decision:
+            raise HTTPException(404, "决策不存在")
         # 从数据库读取决策
         analyses = service.analyze_from_personas(data.decision_id, persona_ids)
         if not analyses:

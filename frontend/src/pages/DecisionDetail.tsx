@@ -2,7 +2,18 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Plus, History, Trash2, Clock, GitCommit, FileText, RefreshCw, Brain, ChevronDown, ChevronUp } from 'lucide-react';
 import { decisionsApi, contextsApi, skillsApi, notesApi } from '../api/client';
-import type { Decision, DecisionReview, DecisionChangeLog, UserContext, DecisionCategory, PersonaAnalysis, PersonaInfo, Note, AIAdviceResponse } from '../api/client';
+import type {
+  Decision,
+  DecisionReview,
+  DecisionChangeLog,
+  UserContext,
+  DecisionCategory,
+  PersonaAnalysis,
+  PersonaInfo,
+  Note,
+  AIAdviceResponse,
+  DecisionTreeNode,
+} from '../api/client';
 
 export default function DecisionDetail() {
   const { id } = useParams();
@@ -10,7 +21,8 @@ export default function DecisionDetail() {
 
   const [decision, setDecision] = useState<Decision>({
     id: 0, title: '', description: '', context: '', original_context: '', environment_snapshot: {},
-    article_id: null, category_id: null, related_domains: [], options: [], chosen_option: '', rationale: '',
+    article_id: null, category_id: null, parent_decision_id: null, root_decision_id: null, node_order: 0,
+    related_domains: [], options: [], chosen_option: '', rationale: '',
     ai_advice: '', ai_advice_used: false, status: 'draft', confidence_score: 5,
     review_interval_days: 30, next_review_date: null, last_reviewed_at: null,
     created_at: '', decided_at: null, updated_at: '',
@@ -40,32 +52,43 @@ export default function DecisionDetail() {
   const [changeReason, setChangeReason] = useState('');
   const [newOption, setNewOption] = useState({ name: '', pros: '', cons: '', score: 5 });
   const [aiAdviceResult, setAiAdviceResult] = useState<AIAdviceResponse | null>(null);
-  const [previousDecision, setPreviousDecision] = useState<Decision | null>(null);
-  const [nextDecisions, setNextDecisions] = useState<Decision[]>([]);
+  const [decisionPath, setDecisionPath] = useState<Decision[]>([]);
+  const [decisionTree, setDecisionTree] = useState<DecisionTreeNode | null>(null);
 
   useEffect(() => {
     if (!id) return;
+    const decisionId = Number(id);
+    setLoading(true);
+    setDecisionPath([]);
+    setDecisionTree(null);
     Promise.all([
-      decisionsApi.get(Number(id)),
-      decisionsApi.getReviews(Number(id)),
-      decisionsApi.getChangeLog(Number(id)),
+      decisionsApi.get(decisionId),
+      decisionsApi.getReviews(decisionId),
+      decisionsApi.getChangeLog(decisionId),
       contextsApi.list(),
       decisionsApi.listCategories(),
-      notesApi.byDecision(Number(id)),
-    ]).then(([d, r, c, ctx, cats, notes]) => {
-      setDecision(d);
-      setReviews(r);
-      setChangeLog(c);
-      setContexts(ctx);
-      setCategories(cats);
-      setDecisionNotes(notes);
-      if (d.parent_decision_id) {
-        decisionsApi.get(d.parent_decision_id).then(p => setPreviousDecision(p));
-      }
-      decisionsApi.getChildren(Number(id)).then(children => setNextDecisions(children));
-      setLoading(false);
-    });
-  }, [id]);
+      notesApi.byDecision(decisionId),
+      decisionsApi.getPath(decisionId),
+      decisionsApi.getTree(decisionId, true),
+    ])
+      .then(([d, r, c, ctx, cats, notes, path, tree]) => {
+        setDecision(d);
+        setReviews(r);
+        setChangeLog(c);
+        setContexts(ctx);
+        setCategories(cats);
+        setDecisionNotes(notes);
+        setDecisionPath(path);
+        setDecisionTree(tree);
+      })
+      .catch((e) => {
+        alert("加载决策详情失败: " + (e instanceof Error ? e.message : "未知错误"));
+        navigate("/decisions");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [id, navigate]);
 
   const handleSave = async (statusOverride?: string) => {
     setSaving(true);
@@ -206,6 +229,31 @@ export default function DecisionDetail() {
     return map[status] || status;
   };
 
+  const renderDecisionTree = (node: DecisionTreeNode, depth = 0) => {
+    const isCurrent = node.id === decision.id;
+    return (
+      <div key={node.id}>
+        <button
+          onClick={() => navigate(`/decisions/${node.id}`)}
+          className={`w-full text-left rounded-lg px-2 py-1.5 transition-colors ${
+            isCurrent
+              ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+              : 'hover:bg-slate-100 dark:hover:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+          }`}
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        >
+          <div className="flex items-center gap-2">
+            <span className={`text-xs px-1.5 py-0.5 rounded ${getStatusBadge(node.status)}`}>
+              {getStatusLabel(node.status)}
+            </span>
+            <span className="text-sm truncate">{node.title}</span>
+          </div>
+        </button>
+        {node.children.map((child) => renderDecisionTree(child, depth + 1))}
+      </div>
+    );
+  };
+
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
 
   return (
@@ -281,7 +329,7 @@ export default function DecisionDetail() {
                 { key: 'abandoned', label: '已放弃', icon: '🔄', color: 'red' },
               ].map((state, i) => {
                 const isCurrent = decision.status === state.key;
-                const colorMap: Record<string, string> = {
+                const colorMap: Record<string, { bg: string; text: string; border: string; activeBg: string; activeText: string }> = {
                   slate: { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-300', activeBg: 'bg-slate-500', activeText: 'text-white' },
                   green: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-300', activeBg: 'bg-green-500', activeText: 'text-white' },
                   blue: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-300', activeBg: 'bg-blue-500', activeText: 'text-white' },
@@ -380,7 +428,7 @@ export default function DecisionDetail() {
               <div className="flex flex-wrap gap-2 mt-1">
                 {contexts.map(c => (
                   <button key={c.id} onClick={() => toggleDomain(c.domain)}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                       decision.related_domains.includes(c.domain)
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                         : 'bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200'
@@ -462,34 +510,36 @@ export default function DecisionDetail() {
                 <Plus className="w-3.5 h-3.5" />新建后续决策
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {/* 前一个决策 */}
+            <div className="space-y-3">
               <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                <p className="text-xs font-medium text-slate-400 mb-2">前一个决策</p>
-                {previousDecision ? (
-                  <div onClick={() => navigate(`/decisions/${previousDecision.id}`)}
-                    className="cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors -m-1 p-1 rounded">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{previousDecision.title}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{new Date(previousDecision.created_at).toLocaleDateString('zh-CN')}</p>
-                    <span className={`inline-block text-xs px-1.5 py-0.5 rounded mt-1 ${getStatusBadge(previousDecision.status)}`}>{getStatusLabel(previousDecision.status)}</span>
-                  </div>
-                ) : (
+                <p className="text-xs font-medium text-slate-400 mb-2">根到当前路径</p>
+                {decisionPath.length === 0 ? (
                   <p className="text-xs text-slate-400 py-2">— 无 —</p>
-                )}
-              </div>
-              {/* 后一个决策 */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                <p className="text-xs font-medium text-slate-400 mb-2">后一个决策</p>
-                {nextDecisions.length > 0 ? (
-                  <div className="space-y-2">
-                    {nextDecisions.map(child => (
-                      <div key={child.id} onClick={() => navigate(`/decisions/${child.id}`)}
-                        className="cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors -m-1 p-1 rounded">
-                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{child.title}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{new Date(child.created_at).toLocaleDateString('zh-CN')}</p>
-                        <span className={`inline-block text-xs px-1.5 py-0.5 rounded mt-1 ${getStatusBadge(child.status)}`}>{getStatusLabel(child.status)}</span>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1 text-xs">
+                    {decisionPath.map((item, index) => (
+                      <div key={item.id} className="flex items-center gap-1">
+                        <button
+                          onClick={() => navigate(`/decisions/${item.id}`)}
+                          className={`px-1.5 py-0.5 rounded ${
+                            item.id === decision.id
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                              : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          {item.title}
+                        </button>
+                        {index < decisionPath.length - 1 && <span className="text-slate-400">→</span>}
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+              <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <p className="text-xs font-medium text-slate-400 mb-2">决策树</p>
+                {decisionTree ? (
+                  <div className="space-y-1">
+                    {renderDecisionTree(decisionTree)}
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 py-2">— 无 —</p>

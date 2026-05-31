@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   GitBranch, Rss, Inbox, RefreshCw, AlertCircle, Star,
 } from 'lucide-react';
-import { decisionsApi, articlesApi, sourcesApi } from '../api/client';
-import type { Decision, Article } from '../api/client';
+import { decisionsApi, articlesApi, sourcesApi, usersApi } from '../api/client';
+import type { Decision, Article, AppUser } from '../api/client';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ total: 0, active: 0, completed: 0, abandoned: 0, due_reviews: 0 });
@@ -12,24 +12,41 @@ export default function Dashboard() {
   const [topArticles, setTopArticles] = useState<Article[]>([]);
   const [sourceCount, setSourceCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [me, setMe] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      decisionsApi.stats(),
-      decisionsApi.dueReviews(),
-      articlesApi.list({ sort_by: 'relevance_score', page_size: 5 }),
-      articlesApi.categories(),
-      sourcesApi.list(),
-    ]).then(([s, reviews, page, categories, sources]) => {
-      setStats(s);
-      setDueReviews(reviews);
-      setTopArticles(page.items);
-      setUnreadCount(categories.unread);
-      setSourceCount(sources.length);
-    }).catch(() => {
-      setTopArticles([]);
-    }).finally(() => setLoading(false));
+    (async () => {
+      try {
+        const meData = await usersApi.me();
+        setMe(meData);
+        const [s, reviews] = await Promise.all([
+          decisionsApi.stats(),
+          decisionsApi.dueReviews(),
+        ]);
+        setStats(s);
+        setDueReviews(reviews);
+
+        if (meData.role === 'admin') {
+          const [page, categories, sources] = await Promise.all([
+            articlesApi.list({ sort_by: 'relevance_score', page_size: 5 }),
+            articlesApi.categories(),
+            sourcesApi.list(),
+          ]);
+          setTopArticles(page.items);
+          setUnreadCount(categories.unread);
+          setSourceCount(sources.length);
+        } else {
+          setTopArticles([]);
+          setUnreadCount(0);
+          setSourceCount(0);
+        }
+      } catch {
+        setTopArticles([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   if (loading) {
@@ -49,8 +66,12 @@ export default function Dashboard() {
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-4 gap-6">
-        <StatCard icon={Rss} label="信息源" value={sourceCount.toString()} sub="已配置" to="/sources" color="blue" />
-        <StatCard icon={Inbox} label="待处理文章" value={unreadCount.toString()} sub="待处理未读" to="/inbox" color="purple" />
+        {me?.role === 'admin' && (
+          <>
+            <StatCard icon={Rss} label="信息源" value={sourceCount.toString()} sub="已配置" to="/sources" color="blue" />
+            <StatCard icon={Inbox} label="待处理文章" value={unreadCount.toString()} sub="待处理未读" to="/inbox" color="purple" />
+          </>
+        )}
         <StatCard icon={GitBranch} label="进行中决策" value={stats.active.toString()} sub={`共 ${stats.total} 个决策`} to="/decisions" color="green" />
         <StatCard icon={RefreshCw} label="待复盘" value={stats.due_reviews.toString()} sub="到期需复盘" to="/review" color="amber" />
       </div>
@@ -83,38 +104,40 @@ export default function Dashboard() {
         </div>
 
         {/* 高相关度文章 */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
-              <Star className="w-4 h-4 text-yellow-500" />
-              高价值信息
-            </h3>
-            <Link to="/inbox" className="text-sm text-blue-500 hover:underline">查看全部</Link>
-          </div>
-          {topArticles.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-8">暂无文章，先配置信息源</p>
-          ) : (
-            <div className="space-y-3">
-              {topArticles.map((a) => (
-                <div key={a.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50">
-                  <div className="flex items-start justify-between">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1">{a.title}</p>
-                    <span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${
-                      a.relevance_score >= 0.7
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    }`}>
-                      {(a.relevance_score * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  {a.relevance_reason && (
-                    <p className="text-xs text-slate-400 mt-1">{a.relevance_reason}</p>
-                  )}
-                </div>
-              ))}
+        {me?.role === 'admin' && (
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                <Star className="w-4 h-4 text-yellow-500" />
+                高价值信息
+              </h3>
+              <Link to="/inbox" className="text-sm text-blue-500 hover:underline">查看全部</Link>
             </div>
-          )}
-        </div>
+            {topArticles.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">暂无文章，先配置信息源</p>
+            ) : (
+              <div className="space-y-3">
+                {topArticles.map((a) => (
+                  <div key={a.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50">
+                    <div className="flex items-start justify-between">
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1">{a.title}</p>
+                      <span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${
+                        a.relevance_score >= 0.7
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                      }`}>
+                        {(a.relevance_score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    {a.relevance_reason && (
+                      <p className="text-xs text-slate-400 mt-1">{a.relevance_reason}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

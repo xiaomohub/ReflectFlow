@@ -5,6 +5,33 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+# ===== 人员与权限 =====
+class AppUserCreate(BaseModel):
+    username: str
+    display_name: str
+    role: str = "normal"
+    is_active: bool = True
+
+
+class AppUserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AppUserResponse(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ===== 信息源 =====
 class SourceBase(BaseModel):
     name: str
@@ -178,6 +205,7 @@ class DecisionBase(BaseModel):
     article_id: Optional[int] = None
     category_id: Optional[int] = None
     parent_decision_id: Optional[int] = None
+    node_order: int = 0
     related_domains: list = []
     options: list[OptionItem] = []
     chosen_option: str = ""
@@ -210,10 +238,13 @@ class DecisionUpdate(BaseModel):
     change_reason: Optional[str] = None
     category_id: Optional[int] = None
     parent_decision_id: Optional[int] = None
+    node_order: Optional[int] = None
+    related_domains: Optional[list[str]] = None
 
 
 class DecisionResponse(DecisionBase):
     id: int
+    root_decision_id: Optional[int] = None
     next_review_date: Optional[datetime] = None
     environment_snapshot: dict = {}
     original_context: str = ""
@@ -224,6 +255,23 @@ class DecisionResponse(DecisionBase):
 
     class Config:
         from_attributes = True
+
+
+class DecisionTreeNodeResponse(BaseModel):
+    """决策树节点（递归）"""
+    id: int
+    title: str
+    status: str
+    confidence_score: int
+    parent_decision_id: Optional[int] = None
+    root_decision_id: Optional[int] = None
+    node_order: int = 0
+    next_review_date: Optional[datetime] = None
+    created_at: datetime
+    children: list["DecisionTreeNodeResponse"] = []
+
+
+DecisionTreeNodeResponse.model_rebuild()
 
 
 # ===== 决策复盘 =====
