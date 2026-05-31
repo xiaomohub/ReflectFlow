@@ -15,6 +15,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 // ===== 信息源 =====
+export interface SourceCategory {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  sort_order: number;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Source {
   id: number;
   name: string;
@@ -26,6 +36,7 @@ export interface Source {
   tags: string[];
   config?: Record<string, string>;
   skip_filter?: boolean;
+  category_id?: number | null;
   last_fetched_at: string | null;
   created_at: string;
   updated_at: string;
@@ -43,6 +54,17 @@ export const sourcesApi = {
   batchDelete: (sourceIds: number[]) =>
     request<{ message: string; deleted: number }>('/api/sources/batch-delete', { method: 'POST', body: JSON.stringify(sourceIds) }),
 };
+
+// ===== 信息源分类 =====
+export const sourceCategoriesApi = {
+  list: () => request<SourceCategory[]>('/api/source-categories/'),
+  create: (data: Partial<SourceCategory>) =>
+    request<SourceCategory>('/api/source-categories/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<SourceCategory>) =>
+    request<SourceCategory>(`/api/source-categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => request(`/api/source-categories/${id}`, { method: 'DELETE' }),
+};
+
 
 // ===== 文章 =====
 export interface Article {
@@ -157,6 +179,7 @@ export interface Decision {
   environment_snapshot: Record<string, unknown>;
   article_id: number | null;
   category_id: number | null;
+  parent_decision_id: number | null;
   related_domains: string[];
   options: DecisionOption[];
   chosen_option: string;
@@ -211,6 +234,13 @@ export interface DecisionCategory {
   updated_at: string;
 }
 
+export interface AIAdviceResponse {
+  advice: string;
+  recommended_option: string | null;
+  analysis: string;
+  risk_warnings: string[];
+}
+
 export interface DecisionPage {
   items: Decision[];
   total: number;
@@ -238,8 +268,10 @@ export const decisionsApi = {
     request<DecisionReview>(`/api/decisions/${decisionId}/reviews`, { method: 'POST', body: JSON.stringify(data) }),
   getReviews: (decisionId: number) => request<DecisionReview[]>(`/api/decisions/${decisionId}/reviews`),
   getChangeLog: (decisionId: number) => request<DecisionChangeLog[]>(`/api/decisions/${decisionId}/changelog`),
-  aiAdvice: (data: { title: string; context: string; options: DecisionOption[]; related_domains: string[] }) =>
-    request<{ advice: string; recommended_option: string | null; analysis: string }>('/api/decisions/ai-advice', { method: 'POST', body: JSON.stringify(data) }),
+  aiAdvice: (data: { title: string; context: string; options: DecisionOption[]; related_domains: string[]; previous_decision_ids?: number[] }) =>
+    request<AIAdviceResponse>('/api/decisions/ai-advice', { method: 'POST', body: JSON.stringify(data) }),
+  getChildren: (decisionId: number) =>
+    request<Decision[]>(`/api/decisions/${decisionId}/children`),
   deleteReview: (decisionId: number, reviewId: number) =>
     request(`/api/decisions/${decisionId}/reviews/${reviewId}`, { method: 'DELETE' }),
   // 分类
@@ -310,6 +342,7 @@ export interface Note {
   is_published: boolean;
   ai_skills: Record<string, unknown>[];
   word_count: number;
+  snippet?: string;
   created_at: string;
   updated_at: string;
 }
@@ -329,6 +362,7 @@ export const notesApi = {
   download: (id: number) => `${BASE}/api/notes/${id}/download`,
   extractSkills: (id: number) => request<{ skills: Record<string, unknown>[] }>(`/api/notes/${id}/extract-skills`, { method: 'POST' }),
   search: (query: string) => request<Note[]>(`/api/notes/search?query=${encodeURIComponent(query)}`),
+  byDecision: (decisionId: number) => request<Note[]>(`/api/notes/by-decision/${decisionId}`),
   listCategories: () => request<NoteCategory[]>('/api/notes/categories'),
   createCategory: (data: Partial<NoteCategory>) => request<NoteCategory>('/api/notes/categories', { method: 'POST', body: JSON.stringify(data) }),
   updateCategory: (id: number, data: Partial<NoteCategory>) => request<NoteCategory>(`/api/notes/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

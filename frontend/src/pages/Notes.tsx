@@ -110,6 +110,13 @@ export default function Notes() {
 
   const displayedNotes = searchResults !== null ? searchResults : notes;
 
+  const totalWords = displayedNotes.reduce((sum, n) => sum + (n.word_count || 0), 0);
+
+  const categoryCounts = notes.reduce<Record<number, number>>((acc, n) => {
+    if (n.category_id) acc[n.category_id] = (acc[n.category_id] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -123,6 +130,28 @@ export default function Notes() {
         >
           <Plus className="w-4 h-4" />新建笔记
         </button>
+      </div>
+
+      {/* 统计条 */}
+      <div className="flex items-center gap-6 text-sm bg-white dark:bg-slate-800 rounded-xl px-5 py-3 shadow-sm border border-slate-200 dark:border-slate-700">
+        <span className="text-slate-500">共 <strong className="text-slate-800 dark:text-white text-base">{notes.length}</strong> 篇笔记</span>
+        <span className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
+        <span className="text-slate-500">
+          总计 <strong className="text-slate-800 dark:text-white">{totalWords.toLocaleString()}</strong> 字
+        </span>
+        <span className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
+        <span className="text-slate-500">
+          <strong className="text-slate-800 dark:text-white">{categories.length}</strong> 个分类
+        </span>
+        {displayedNotes.filter(n => n.ai_skills?.length > 0).length > 0 && (
+          <>
+            <span className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
+            <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5" />
+              <strong>{displayedNotes.filter(n => n.ai_skills?.length > 0).length}</strong> 篇已提取技能
+            </span>
+          </>
+        )}
       </div>
 
       {/* 搜索 */}
@@ -185,13 +214,17 @@ export default function Notes() {
 
             <button
               onClick={() => setSelectedCategory(null)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
                 selectedCategory === null
                   ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
               }`}
             >
-              全部笔记
+              <span className="flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                全部笔记
+              </span>
+              <span className="text-xs text-slate-400">{notes.length}</span>
             </button>
 
             {categories.map(cat => (
@@ -214,14 +247,17 @@ export default function Notes() {
                 ) : (
                   <button
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    className={`flex-1 flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
                       selectedCategory === cat.id
                         ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
                   >
-                    <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{cat.name}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{cat.name}</span>
+                    </span>
+                    <span className="text-xs text-slate-400 shrink-0 ml-2">{categoryCounts[cat.id] || 0}</span>
                   </button>
                 )}
                 {editingCategory !== cat.id && (
@@ -262,12 +298,12 @@ export default function Notes() {
                 <div
                   key={note.id}
                   onClick={() => navigate(`/notes/${note.id}`)}
-                  className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow cursor-pointer"
+                  className="group bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md hover:border-blue-200 dark:hover:border-blue-700 transition-all cursor-pointer"
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                      {/* 标题行 */}
+                      <div className="flex items-center gap-2 mb-1.5">
                         <h3 className="font-medium text-slate-800 dark:text-white truncate">{note.title}</h3>
                         {note.category_id && categories.find(c => c.id === note.category_id) && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 shrink-0">
@@ -275,32 +311,44 @@ export default function Notes() {
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-                        {note.content?.replace(/[#*`\[\]]/g, '').slice(0, 200) || '空内容'}
+
+                      {/* 内容预览 */}
+                      <p className="text-sm text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                        {note.snippet
+                          ? note.snippet
+                          : (note.content?.replace(/[#*`\[\]]/g, '').slice(0, 200) || '空内容')}
                       </p>
-                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                        <span>{note.word_count} 字</span>
+
+                      {/* 底部信息栏 */}
+                      <div className="flex items-center flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <span className="font-medium text-slate-500">{note.word_count}</span>
+                          字
+                        </span>
                         <span>{new Date(note.updated_at).toLocaleDateString('zh-CN')}</span>
-                        {note.tags?.length > 0 && note.tags.map(tag => (
+                        {note.tags?.length > 0 && note.tags.slice(0, 3).map(tag => (
                           <span key={String(tag)} className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-xs text-slate-500">
                             {String(tag)}
                           </span>
                         ))}
-                      </div>
-                      {note.ai_skills?.length > 0 && (
-                        <div className="flex gap-1 mt-2">
-                          <Sparkles className="w-3 h-3 text-amber-500" />
-                          <span className="text-xs text-amber-600 dark:text-amber-400">
-                            已提取 {note.ai_skills.length} 条技能
+                        {note.tags?.length > 3 && (
+                          <span className="text-slate-300">+{note.tags.length - 3}</span>
+                        )}
+                        {note.ai_skills?.length > 0 && (
+                          <span className="flex items-center gap-1 text-amber-500">
+                            <Sparkles className="w-3 h-3" />
+                            {note.ai_skills.length} 条技能
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0 ml-4">
+
+                    {/* 操作按钮 */}
+                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                       <a
                         href={notesApi.download(note.id)}
                         onClick={e => e.stopPropagation()}
-                        className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
+                        className="p-1.5 text-slate-300 hover:text-blue-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                         title="下载 Markdown"
                       >
                         <Download className="w-4 h-4" />
@@ -308,14 +356,14 @@ export default function Notes() {
                       <button
                         onClick={(e) => handleExtractSkills(e, note.id)}
                         disabled={extractingId === note.id}
-                        className="p-2 text-slate-300 hover:text-amber-500 transition-colors disabled:opacity-40"
+                        className="p-1.5 text-slate-300 hover:text-amber-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-40"
                         title="提取技能"
                       >
                         <Sparkles className={`w-4 h-4 ${extractingId === note.id ? 'animate-spin' : ''}`} />
                       </button>
                       <button
                         onClick={(e) => handleDelete(e, note.id)}
-                        className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                        className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                         title="删除"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -9,6 +9,14 @@ from models.models import Decision, DecisionReview, DecisionChangeLog
 from utils import beijing_now
 
 
+STATUS_TRANSITIONS = {
+    "draft": ["active"],
+    "active": ["completed", "abandoned"],
+    "completed": ["active"],
+    "abandoned": ["active"],
+}
+
+
 class DecisionService:
     """决策管理服务"""
 
@@ -79,6 +87,17 @@ class DecisionService:
                     change_reason=change_reason,
                 )
                 self.db.add(log)
+
+        # 状态机校验
+        if "status" in data and data["status"] != decision.status:
+            current = decision.status
+            requested = data["status"]
+            allowed = STATUS_TRANSITIONS.get(current, [])
+            if requested not in allowed:
+                raise ValueError(
+                    f"无效的状态变更: {current} → {requested}。"
+                    f"允许的变更: {' → '.join(allowed) if allowed else '无'}"
+                )
 
         for key, value in data.items():
             if hasattr(decision, key):

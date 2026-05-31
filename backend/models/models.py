@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
 from models.database import Base
 from utils import beijing_now
 
@@ -21,6 +22,7 @@ class Source(Base):
     tags = Column(JSON, default=list, comment="标签")
     config = Column(JSON, default=dict, comment="额外配置，如 Cookie、Headers 等")
     skip_filter = Column(Boolean, default=False, comment="跳过 AI 过滤，保留全部文章")
+    category_id = Column(Integer, ForeignKey("source_categories.id"), nullable=True, comment="所属分类")
     created_at = Column(DateTime, default=lambda: beijing_now())
     updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
 
@@ -85,7 +87,9 @@ class Decision(Base):
     # 关联
     article_id = Column(Integer, ForeignKey("articles.id"), nullable=True, comment="触发文章")
     category_id = Column(Integer, ForeignKey("decision_categories.id"), nullable=True, comment="所属分类")
+    parent_decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=True, comment="父决策（决策树串联）")
     related_domains = Column(JSON, default=list, comment="关联领域")
+    children = relationship("Decision", backref="parent", remote_side="Decision.id", viewonly=True)
 
     # 决策选项
     options = Column(JSON, default=list, comment="考虑的选项列表 [{name, pros, cons, score}]")
@@ -182,7 +186,21 @@ class Note(Base):
     tags = Column(JSON, default=list, comment="标签列表")
     is_published = Column(Boolean, default=True, comment="是否公开")
     ai_skills = Column(JSON, default=list, comment="AI 提取的技能/方法论列表")
+    decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=True, comment="关联决策")
     word_count = Column(Integer, default=0, comment="字数")
+    created_at = Column(DateTime, default=lambda: beijing_now())
+    updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
+
+
+class SourceCategory(Base):
+    """信息源分类"""
+    __tablename__ = "source_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, comment="分类名称")
+    parent_id = Column(Integer, ForeignKey("source_categories.id"), nullable=True, comment="父分类")
+    sort_order = Column(Integer, default=0, comment="排序")
+    description = Column(Text, default="", comment="描述")
     created_at = Column(DateTime, default=lambda: beijing_now())
     updated_at = Column(DateTime, default=lambda: beijing_now(), onupdate=lambda: beijing_now())
 

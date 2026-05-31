@@ -119,7 +119,10 @@ def get_decision(decision_id: int, db: Session = Depends(get_db)):
 @router.put("/{decision_id}", response_model=DecisionResponse)
 def update_decision(decision_id: int, data: DecisionUpdate, db: Session = Depends(get_db)):
     service = DecisionService(db)
-    decision = service.update_decision(decision_id, data.model_dump(exclude_unset=True))
+    try:
+        decision = service.update_decision(decision_id, data.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     if not decision:
         raise HTTPException(404, "决策不存在")
     return decision
@@ -130,9 +133,22 @@ def delete_decision(decision_id: int, db: Session = Depends(get_db)):
     decision = db.query(Decision).filter(Decision.id == decision_id).first()
     if not decision:
         raise HTTPException(404, "决策不存在")
+    # 将子决策的 parent_decision_id 置空
+    db.query(Decision).filter(Decision.parent_decision_id == decision_id).update(
+        {Decision.parent_decision_id: None}
+    )
     db.delete(decision)
     db.commit()
     return {"message": "已删除"}
+
+
+@router.get("/{decision_id}/children", response_model=list[DecisionResponse])
+def get_decision_children(decision_id: int, db: Session = Depends(get_db)):
+    """获取决策的子决策（决策树中的下级节点）"""
+    children = db.query(Decision).filter(
+        Decision.parent_decision_id == decision_id
+    ).order_by(Decision.created_at.desc()).all()
+    return children
 
 
 @router.post("/{decision_id}/reviews", response_model=DecisionReviewResponse)
@@ -183,9 +199,11 @@ def get_ai_advice(data: AIAdviceRequest, db: Session = Depends(get_db)):
         context=data.context,
         options=[o.model_dump() for o in data.options],
         related_domains=data.related_domains,
+        previous_decision_ids=data.previous_decision_ids,
     )
     return AIAdviceResponse(
         advice=result.get("advice", ""),
         recommended_option=result.get("recommended_option"),
         analysis=result.get("analysis", ""),
+        risk_warnings=result.get("risk_warnings", []),
     )

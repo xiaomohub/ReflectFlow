@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from models.database import init_db, SessionLocal
 from models.models import Setting
-from routers import sources, articles, contexts, decisions, settings, notes, skills
+from routers import sources, articles, contexts, decisions, settings, notes, skills, source_categories
 from utils import beijing_now
 
 
@@ -89,7 +89,7 @@ app = FastAPI(
 # CORS 配置（允许前端开发服务器访问）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5175", "http://127.0.0.1:5175"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5175", "http://127.0.0.1:5175", "http://localhost:8001", "http://127.0.0.1:8001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,6 +103,7 @@ app.include_router(decisions.router)
 app.include_router(settings.router)
 app.include_router(notes.router)
 app.include_router(skills.router)
+app.include_router(source_categories.router)
 
 
 @app.get("/api/health")

@@ -36,7 +36,7 @@ if not exist "venv" (
 
 :: 安装依赖
 echo [..] 安装后端依赖...
-call venv\Scripts\pip install -r requirements.txt -q
+call venv\Scripts\python -m pip install -r requirements.txt -q
 echo [OK] 后端依赖安装完成
 
 echo.

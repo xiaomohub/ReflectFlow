@@ -39,7 +39,10 @@
       "Skill(update-config)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(venvScriptspython -m pip install -r requirements.txt -q)",
+      "Bash(./venv/Scripts/python -m pip install -r requirements.txt -q)",
+      "Bash(timeout 5 ./venv/Scripts/python -m uvicorn main:app --host 0.0.0.0 --port 8000)"
     ],
     "deny": [
       "Bash(rm -rf *)",

@@ -19,7 +19,7 @@ class SourceBase(BaseModel):
 
 
 class SourceCreate(SourceBase):
-    pass
+    category_id: Optional[int] = None
 
 
 class SourceUpdate(BaseModel):
@@ -31,6 +31,7 @@ class SourceUpdate(BaseModel):
     fetch_interval: Optional[int] = None
     tags: Optional[list] = None
     config: Optional[dict] = None
+    category_id: Optional[int] = None
 
 
 class SourceImportItem(BaseModel):
@@ -47,7 +48,36 @@ class SourceImportItem(BaseModel):
 
 class SourceResponse(SourceBase):
     id: int
+    category_id: Optional[int] = None
     last_fetched_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ===== 信息源分类 =====
+class SourceCategoryCreate(BaseModel):
+    name: str
+    parent_id: Optional[int] = None
+    sort_order: int = 0
+    description: str = ""
+
+
+class SourceCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    parent_id: Optional[int] = None
+    sort_order: Optional[int] = None
+    description: Optional[str] = None
+
+
+class SourceCategoryResponse(BaseModel):
+    id: int
+    name: str
+    parent_id: Optional[int] = None
+    sort_order: int = 0
+    description: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -147,6 +177,7 @@ class DecisionBase(BaseModel):
     environment_snapshot: dict = {}
     article_id: Optional[int] = None
     category_id: Optional[int] = None
+    parent_decision_id: Optional[int] = None
     related_domains: list = []
     options: list[OptionItem] = []
     chosen_option: str = ""
@@ -178,6 +209,7 @@ class DecisionUpdate(BaseModel):
     review_interval_days: Optional[int] = None
     change_reason: Optional[str] = None
     category_id: Optional[int] = None
+    parent_decision_id: Optional[int] = None
 
 
 class DecisionResponse(DecisionBase):
@@ -298,12 +330,14 @@ class AIAdviceRequest(BaseModel):
     context: str = ""
     options: list[OptionItem] = []
     related_domains: list[str] = []
+    previous_decision_ids: list[int] = []
 
 
 class AIAdviceResponse(BaseModel):
     advice: str
     recommended_option: Optional[str] = None
     analysis: str = ""
+    risk_warnings: list[str] = []
 
 
 class AIFilterResponse(BaseModel):
@@ -355,6 +389,7 @@ class NoteCreate(BaseModel):
     category_id: Optional[int] = None
     tags: list = []
     is_published: bool = True
+    decision_id: Optional[int] = None
 
 
 class NoteUpdate(BaseModel):
@@ -363,6 +398,7 @@ class NoteUpdate(BaseModel):
     category_id: Optional[int] = None
     tags: Optional[list] = None
     is_published: Optional[bool] = None
+    decision_id: Optional[int] = None
 
 
 class NoteResponse(BaseModel):
@@ -374,11 +410,16 @@ class NoteResponse(BaseModel):
     is_published: bool = True
     ai_skills: list = []
     word_count: int = 0
+    decision_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class NoteSearchItem(NoteResponse):
+    snippet: str = ""
 
 
 # ===== 人格 Skills 分析 =====

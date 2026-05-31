@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Plus, History, Trash2, Clock, GitCommit, FileText, RefreshCw, Brain, ChevronDown, ChevronUp } from 'lucide-react';
-import { decisionsApi, contextsApi, skillsApi } from '../api/client';
-import type { Decision, DecisionReview, DecisionChangeLog, UserContext, DecisionCategory, PersonaAnalysis, PersonaInfo } from '../api/client';
+import { decisionsApi, contextsApi, skillsApi, notesApi } from '../api/client';
+import type { Decision, DecisionReview, DecisionChangeLog, UserContext, DecisionCategory, PersonaAnalysis, PersonaInfo, Note, AIAdviceResponse } from '../api/client';
 
 export default function DecisionDetail() {
   const { id } = useParams();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const isNew = location.pathname === '/decisions/new';
 
   const [decision, setDecision] = useState<Decision>({
     id: 0, title: '', description: '', context: '', original_context: '', environment_snapshot: {},
@@ -39,56 +36,63 @@ export default function DecisionDetail() {
     what_went_well: '', what_to_improve: '', next_steps: '', mood: 'neutral',
     progress: '', adjusted_plan: '', is_progress_update: false,
   });
+  const [decisionNotes, setDecisionNotes] = useState<Note[]>([]);
   const [changeReason, setChangeReason] = useState('');
   const [newOption, setNewOption] = useState({ name: '', pros: '', cons: '', score: 5 });
+  const [aiAdviceResult, setAiAdviceResult] = useState<AIAdviceResponse | null>(null);
+  const [previousDecision, setPreviousDecision] = useState<Decision | null>(null);
+  const [nextDecisions, setNextDecisions] = useState<Decision[]>([]);
 
   useEffect(() => {
-    if (isNew) {
+    if (!id) return;
+    Promise.all([
+      decisionsApi.get(Number(id)),
+      decisionsApi.getReviews(Number(id)),
+      decisionsApi.getChangeLog(Number(id)),
+      contextsApi.list(),
+      decisionsApi.listCategories(),
+      notesApi.byDecision(Number(id)),
+    ]).then(([d, r, c, ctx, cats, notes]) => {
+      setDecision(d);
+      setReviews(r);
+      setChangeLog(c);
+      setContexts(ctx);
+      setCategories(cats);
+      setDecisionNotes(notes);
+      if (d.parent_decision_id) {
+        decisionsApi.get(d.parent_decision_id).then(p => setPreviousDecision(p));
+      }
+      decisionsApi.getChildren(Number(id)).then(children => setNextDecisions(children));
       setLoading(false);
-      const articleId = searchParams.get('article');
-      if (articleId) setDecision(d => ({ ...d, article_id: Number(articleId) }));
-      Promise.all([
-        contextsApi.list(),
-        decisionsApi.listCategories(),
-      ]).then(([ctx, cats]) => {
-        setContexts(ctx);
-        setCategories(cats);
-      });
-    } else if (id) {
-      Promise.all([
-        decisionsApi.get(Number(id)),
-        decisionsApi.getReviews(Number(id)),
-        decisionsApi.getChangeLog(Number(id)),
-        contextsApi.list(),
-        decisionsApi.listCategories(),
-      ]).then(([d, r, c, ctx, cats]) => {
-        setDecision(d);
-        setReviews(r);
-        setChangeLog(c);
-        setContexts(ctx);
-        setCategories(cats);
-        setLoading(false);
-      });
-    }
+    });
   }, [id]);
 
-  const handleSave = async () => {
+  const handleSave = async (statusOverride?: string) => {
     setSaving(true);
-    if (isNew) {
-      const d = await decisionsApi.create({
-        ...decision,
-        original_context: decision.context,
-        environment_snapshot: { created_at: new Date().toISOString() },
-      });
-      navigate(`/decisions/${d.id}`, { replace: true });
-    } else {
-      const updateData: Record<string, unknown> = { ...decision };
-      if (changeReason) updateData.change_reason = changeReason;
-      await decisionsApi.update(Number(id), updateData as Partial<Decision>);
+    const updateData: Record<string, unknown> = {
+      title: decision.title,
+      description: decision.description,
+      context: decision.context,
+      category_id: decision.category_id,
+      related_domains: decision.related_domains,
+      options: decision.options,
+      chosen_option: decision.chosen_option,
+      rationale: decision.rationale,
+      ai_advice: decision.ai_advice,
+      ai_advice_used: decision.ai_advice_used,
+      status: statusOverride || decision.status,
+      confidence_score: decision.confidence_score,
+      review_interval_days: decision.review_interval_days,
+    };
+    if (changeReason) updateData.change_reason = changeReason;
+    try {
+      const updated = await decisionsApi.update(Number(id), updateData as Partial<Decision>);
+      setDecision(prev => ({ ...prev, ...updated }));
       setChangeReason('');
-      // 刷新 changelog
       const log = await decisionsApi.getChangeLog(Number(id));
       setChangeLog(log);
+    } catch (e) {
+      alert('保存失败: ' + (e instanceof Error ? e.message : '未知错误'));
     }
     setSaving(false);
   };
@@ -97,12 +101,18 @@ export default function DecisionDetail() {
     if (!decision.title) { alert('请先输入决策标题'); return; }
     setAdviceLoading(true);
     try {
+      const previousIds: number[] = [];
+      if (decision.parent_decision_id) {
+        previousIds.push(decision.parent_decision_id);
+      }
       const result = await decisionsApi.aiAdvice({
         title: decision.title,
         context: decision.context,
         options: decision.options,
         related_domains: decision.related_domains,
+        previous_decision_ids: previousIds,
       });
+      setAiAdviceResult(result);
       setDecision(d => ({ ...d, ai_advice: result.advice, rationale: result.analysis }));
     } catch (e) {
       alert('AI 建议获取失败');
@@ -120,7 +130,7 @@ export default function DecisionDetail() {
         setPersonasList(list);
       }
       const result = await skillsApi.analyze({
-        decision_id: isNew ? undefined : Number(id),
+        decision_id: Number(id),
         title: decision.title,
         context: decision.context,
         options: decision.options,
@@ -209,38 +219,36 @@ export default function DecisionDetail() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-              {isNew ? '新建决策' : '决策详情'}
+              决策详情
             </h2>
-            {!isNew && (
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getStatusBadge(decision.status)}`}>
                 {getStatusLabel(decision.status)}
               </span>
-            )}
           </div>
           <div className="flex gap-3">
-            {!isNew && (
-              <>
-                <button onClick={() => setShowChangeLog(!showChangeLog)}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
-                  <GitCommit className="w-4 h-4" />变更历史
-                </button>
-                <button onClick={() => setShowSnapshot(!showSnapshot)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-colors">
-                  <FileText className="w-4 h-4" />环境快照
-                </button>
-                <button onClick={() => setShowReviewForm(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-lg text-sm hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 transition-colors">
-                  <History className="w-4 h-4" />添加复盘
-                </button>
-                <button onClick={handleDeleteDecision}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-500 rounded-lg text-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 transition-colors">
-                  <Trash2 className="w-4 h-4" />删除
-                </button>
-              </>
-            )}
+              <button onClick={() => setShowChangeLog(!showChangeLog)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                <GitCommit className="w-4 h-4" />变更历史
+              </button>
+              <button onClick={() => setShowSnapshot(!showSnapshot)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-colors">
+                <FileText className="w-4 h-4" />环境快照
+              </button>
+              <button onClick={() => setShowReviewForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-lg text-sm hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 transition-colors">
+                <History className="w-4 h-4" />添加复盘
+              </button>
+              <button onClick={handleDeleteDecision}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-500 rounded-lg text-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 transition-colors">
+                <Trash2 className="w-4 h-4" />删除
+              </button>
+              <button onClick={() => navigate(`/decisions/new?parent_id=${id}`)}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 transition-colors">
+                <Plus className="w-4 h-4" />新建决策
+              </button>
             <button onClick={() => navigate('/decisions')}
               className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm transition-colors">取消</button>
-            <button onClick={handleSave} disabled={saving}
+            <button onClick={() => handleSave()} disabled={saving}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50 transition-colors">
               {saving ? '保存中...' : '保存决策'}
             </button>
@@ -248,14 +256,12 @@ export default function DecisionDetail() {
         </div>
 
         {/* 变更原因输入 */}
-        {!isNew && (
           <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/30 rounded-lg">
             <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">变更原因说明（可选，记录本次修改的原因）</label>
             <input value={changeReason} onChange={e => setChangeReason(e.target.value)}
               className="w-full px-3 py-1.5 border border-amber-200 dark:border-amber-700/50 rounded bg-white dark:bg-slate-700 text-sm"
               placeholder="如：调整仓位、市场环境变化、新增信息..." />
           </div>
-        )}
 
         <div className="space-y-4">
           <div>
@@ -264,17 +270,78 @@ export default function DecisionDetail() {
               className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm" placeholder="决策标题" />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">状态</label>
-              <select value={decision.status} onChange={e => setDecision({ ...decision, status: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm">
-                <option value="draft">草稿</option>
-                <option value="active">进行中</option>
-                <option value="completed">已完成</option>
-                <option value="abandoned">已放弃</option>
-              </select>
+          {/* 状态机可视化 */}
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">状态流转</label>
+            <div className="flex items-center gap-0">
+              {[
+                { key: 'draft', label: '草稿', icon: '📝', color: 'slate' },
+                { key: 'active', label: '进行中', icon: '⚡', color: 'green' },
+                { key: 'completed', label: '已完成', icon: '✅', color: 'blue' },
+                { key: 'abandoned', label: '已放弃', icon: '🔄', color: 'red' },
+              ].map((state, i) => {
+                const isCurrent = decision.status === state.key;
+                const colorMap: Record<string, string> = {
+                  slate: { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-300', activeBg: 'bg-slate-500', activeText: 'text-white' },
+                  green: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-300', activeBg: 'bg-green-500', activeText: 'text-white' },
+                  blue: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-300', activeBg: 'bg-blue-500', activeText: 'text-white' },
+                  red: { bg: 'bg-red-50', text: 'text-red-500', border: 'border-red-300', activeBg: 'bg-red-400', activeText: 'text-white' },
+                };
+                const c = colorMap[state.color];
+                return (
+                  <div key={state.key} className="flex items-center">
+                    <div className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border ${
+                      isCurrent
+                        ? `${c.activeBg} ${c.activeText} border-transparent shadow-sm`
+                        : `${c.bg} ${c.text} ${c.border}`
+                    }`}>
+                      <span>{state.icon}</span>
+                      <span>{state.label}</span>
+                    </div>
+                    {i < 3 && (
+                      <div className="w-4 h-px bg-slate-300 dark:bg-slate-600" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
+            {/* 状态变更按钮 */}
+            <div className="flex items-center gap-2 mt-2">
+              {(() => {
+                const actions: Record<string, Array<{ to: string; label: string; color: string; confirm?: string }>> = {
+                  draft: [{ to: 'active', label: '开始执行', color: 'green', confirm: '确定开始执行这个决策吗？' }],
+                  active: [
+                    { to: 'completed', label: '标记完成', color: 'blue', confirm: '确认已完成此决策？' },
+                    { to: 'abandoned', label: '放弃决策', color: 'red', confirm: '确定要放弃这个决策吗？' },
+                  ],
+                  completed: [{ to: 'active', label: '重新打开', color: 'green', confirm: '重新打开此决策？' }],
+                  abandoned: [{ to: 'active', label: '重新打开', color: 'green', confirm: '重新打开此决策？' }],
+                };
+                const currentActions = actions[decision.status] || [];
+                return currentActions.map(action => (
+                  <button
+                    key={action.to}
+                    onClick={() => {
+                      if (!action.confirm || confirm(action.confirm)) {
+                        setDecision({ ...decision, status: action.to });
+                      }
+                    }}
+                    className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                      action.color === 'green'
+                        ? 'bg-green-50 text-green-600 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400'
+                        : action.color === 'blue'
+                        ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400'
+                        : 'bg-red-50 text-red-500 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400'
+                    }`}
+                  >
+                    {action.label}
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">信心指数 (1-10)</label>
               <input type="number" min={1} max={10} value={decision.confidence_score}
@@ -386,6 +453,51 @@ export default function DecisionDetail() {
               className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm" rows={4} placeholder="你为什么做这个选择？" />
           </div>
 
+          {/* 关联决策链 */}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-medium text-slate-600 dark:text-slate-400">关联决策链</label>
+              <button onClick={() => navigate(`/decisions/new?parent_id=${id}`)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 transition-colors">
+                <Plus className="w-3.5 h-3.5" />新建后续决策
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {/* 前一个决策 */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <p className="text-xs font-medium text-slate-400 mb-2">前一个决策</p>
+                {previousDecision ? (
+                  <div onClick={() => navigate(`/decisions/${previousDecision.id}`)}
+                    className="cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors -m-1 p-1 rounded">
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{previousDecision.title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{new Date(previousDecision.created_at).toLocaleDateString('zh-CN')}</p>
+                    <span className={`inline-block text-xs px-1.5 py-0.5 rounded mt-1 ${getStatusBadge(previousDecision.status)}`}>{getStatusLabel(previousDecision.status)}</span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 py-2">— 无 —</p>
+                )}
+              </div>
+              {/* 后一个决策 */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <p className="text-xs font-medium text-slate-400 mb-2">后一个决策</p>
+                {nextDecisions.length > 0 ? (
+                  <div className="space-y-2">
+                    {nextDecisions.map(child => (
+                      <div key={child.id} onClick={() => navigate(`/decisions/${child.id}`)}
+                        className="cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors -m-1 p-1 rounded">
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{child.title}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{new Date(child.created_at).toLocaleDateString('zh-CN')}</p>
+                        <span className={`inline-block text-xs px-1.5 py-0.5 rounded mt-1 ${getStatusBadge(child.status)}`}>{getStatusLabel(child.status)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 py-2">— 无 —</p>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* AI 建议 */}
           <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
             <div className="flex items-center justify-between mb-3">
@@ -396,10 +508,51 @@ export default function DecisionDetail() {
                 {adviceLoading ? '分析中...' : '获取 AI 建议'}
               </button>
             </div>
-            {decision.ai_advice && (
-              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{decision.ai_advice}</p>
-                <label className="flex items-center gap-2 mt-2 text-sm">
+            {aiAdviceResult && (
+              <div className="space-y-3">
+                {/* 推荐选项 */}
+                {aiAdviceResult.recommended_option && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-700/30 rounded-lg flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                      <span className="text-green-600 dark:text-green-400 text-sm font-bold">★</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-green-600 dark:text-green-400 font-medium">推荐选项</p>
+                      <p className="text-sm font-semibold text-green-800 dark:text-green-300">{aiAdviceResult.recommended_option}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 核心建议 */}
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                  <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">建议</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300">{aiAdviceResult.advice}</p>
+                </div>
+
+                {/* 详细分析 */}
+                {aiAdviceResult.analysis && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">分析</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{aiAdviceResult.analysis}</p>
+                  </div>
+                )}
+
+                {/* 风险提示 */}
+                {aiAdviceResult.risk_warnings.length > 0 && (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700/30 rounded-lg">
+                    <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-2">风险提示</p>
+                    <ul className="space-y-1">
+                      {aiAdviceResult.risk_warnings.map((w, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300">
+                          <span className="text-red-400 mt-0.5 shrink-0">•</span>
+                          {w}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={decision.ai_advice_used}
                     onChange={e => setDecision({ ...decision, ai_advice_used: e.target.checked })}
                     className="rounded border-slate-300" />
@@ -560,8 +713,50 @@ export default function DecisionDetail() {
         </div>
       </div>
 
+      {/* 相关笔记 */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-500" />
+              相关笔记 ({decisionNotes.length})
+            </h3>
+            <button
+              onClick={() => navigate(`/notes/new?decision_id=${id}`)}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />新建笔记
+            </button>
+          </div>
+          {decisionNotes.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">暂无相关笔记</p>
+          ) : (
+            <div className="space-y-2">
+              {decisionNotes.map(note => (
+                <div
+                  key={note.id}
+                  onClick={() => navigate(`/notes/${note.id}`)}
+                  className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{note.title}</span>
+                    <span className="text-xs text-slate-400">{new Date(note.created_at).toLocaleDateString('zh-CN')}</span>
+                  </div>
+                  {note.snippet && (
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{note.snippet}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    {note.tags?.map(tag => (
+                      <span key={tag} className="text-xs px-1.5 py-0.5 bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400 rounded">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
       {/* 环境快照面板 */}
-      {showSnapshot && !isNew && (
+      {showSnapshot && (
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
           <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
             <FileText className="w-4 h-4 text-indigo-500" />
@@ -600,7 +795,7 @@ export default function DecisionDetail() {
       )}
 
       {/* 变更历史面板 */}
-      {showChangeLog && !isNew && (
+      {showChangeLog && (
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
           <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
             <GitCommit className="w-4 h-4 text-amber-500" />
@@ -636,7 +831,7 @@ export default function DecisionDetail() {
       )}
 
       {/* 复盘历史 */}
-      {!isNew && reviews.length > 0 && (
+      {reviews.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
           <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
             <History className="w-4 h-4" />

@@ -83,5 +83,25 @@ def init_db():
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE decisions ADD COLUMN category_id INTEGER REFERENCES decision_categories(id)"))
                 conn.commit()
+
+        # 迁移7: sources.category_id + source_categories 表
+        if "category_id" not in src_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE sources ADD COLUMN category_id INTEGER REFERENCES source_categories(id)"))
+                conn.commit()
+
+        # 迁移8: notes.decision_id
+        note_cols = [c["name"] for c in inspector.get_columns("notes")]
+        if "decision_id" not in note_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE notes ADD COLUMN decision_id INTEGER REFERENCES decisions(id)"))
+                conn.commit()
+
+        # 迁移9: decisions.parent_decision_id (决策树)
+        dec_cols = [c["name"] for c in inspector.get_columns("decisions")]
+        if "parent_decision_id" not in dec_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE decisions ADD COLUMN parent_decision_id INTEGER REFERENCES decisions(id)"))
+                conn.commit()
     except Exception:
         pass  # 表可能还不存在，忽略

@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse
 from models.database import get_db
 from models.models import Note, NoteCategory
 from schemas import (
-    NoteCreate, NoteUpdate, NoteResponse,
+    NoteCreate, NoteUpdate, NoteResponse, NoteSearchItem,
     NoteCategoryCreate, NoteCategoryUpdate, NoteCategoryResponse,
 )
 from services.note_service import NoteService
@@ -147,7 +147,20 @@ def extract_skills(note_id: int, db: Session = Depends(get_db)):
     return {"skills": skills}
 
 
-@router.post("/search", response_model=list[NoteResponse])
+@router.get("/by-decision/{decision_id}", response_model=list[NoteResponse])
+def list_notes_by_decision(decision_id: int, db: Session = Depends(get_db)):
+    """获取关联到某决策的所有笔记"""
+    return db.query(Note).filter(Note.decision_id == decision_id).order_by(Note.updated_at.desc()).all()
+
+
+@router.post("/search", response_model=list[NoteSearchItem])
 def search_notes(query: str = Query("", description="搜索关键词"), db: Session = Depends(get_db)):
     service = NoteService(db)
-    return service.search_notes(query)
+    notes = service.search_notes(query)
+    # Map to response with snippet from transient attribute
+    result = []
+    for note in notes:
+        item = NoteSearchItem.model_validate(note)
+        item.snippet = getattr(note, "_snippet", "")
+        result.append(item)
+    return result

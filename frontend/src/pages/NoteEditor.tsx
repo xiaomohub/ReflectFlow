@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import MDEditor from '@uiw/react-md-editor';
 import { ArrowLeft, Save, Trash2, Sparkles } from 'lucide-react';
 import { notesApi } from '../api/client';
@@ -8,6 +8,7 @@ import type { NoteCategory } from '../api/client';
 export default function NoteEditor() {
   const { id } = useParams();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const isNew = location.pathname === '/notes/new';
   const navigate = useNavigate();
 
@@ -15,6 +16,10 @@ export default function NoteEditor() {
   const [content, setContent] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [tags, setTags] = useState<string>('');
+  const [decisionId, setDecisionId] = useState<number | null>(() => {
+    const d = searchParams.get('decision_id');
+    return d ? Number(d) : null;
+  });
   const [categories, setCategories] = useState<NoteCategory[]>([]);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -54,11 +59,12 @@ export default function NoteEditor() {
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
-    const data = {
+    const data: Record<string, unknown> = {
       title,
       content,
       category_id: categoryId,
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      decision_id: decisionId,
     };
     try {
       if (isNew) {
@@ -166,7 +172,7 @@ export default function NoteEditor() {
             className="w-full px-4 py-3 text-lg font-medium border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder-slate-400"
           />
         </div>
-        <div className="w-48">
+        <div className="w-44">
           <select
             value={categoryId ?? ''}
             onChange={e => setCategoryId(e.target.value ? Number(e.target.value) : null)}
@@ -178,7 +184,7 @@ export default function NoteEditor() {
             ))}
           </select>
         </div>
-        <div className="w-64">
+        <div className="w-56">
           <input
             value={tags}
             onChange={e => setTags(e.target.value)}
@@ -186,6 +192,13 @@ export default function NoteEditor() {
             className="w-full px-3 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm placeholder-slate-400"
           />
         </div>
+        {decisionId && (
+          <div className="w-auto">
+            <div className="px-3 py-3 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-800 whitespace-nowrap">
+              <span className="font-medium">关联决策 #{decisionId}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Markdown 编辑器 */}

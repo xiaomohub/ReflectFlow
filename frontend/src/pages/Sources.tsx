@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, RefreshCw, Rss, Globe, Code, MessageCircle, Settings, Clock, Filter, Eye, ChevronDown, ChevronUp, Share2, Upload, X, CheckSquare, Square } from 'lucide-react';
-import { sourcesApi, articlesApi, settingsApi } from '../api/client';
-import type { Source, AppSettings, Article } from '../api/client';
+import { sourcesApi, articlesApi, settingsApi, sourceCategoriesApi } from '../api/client';
+import type { Source, SourceCategory, AppSettings, Article } from '../api/client';
 
 const typeIcons: Record<string, React.ElementType> = { rss: Rss, webpage: Globe, api: Code, newsletter: Rss, xueqiu: MessageCircle, rsshub: Share2 };
 const typeLabels: Record<string, string> = { rss: 'RSS', webpage: '网页', api: 'API', xueqiu: '雪球', rsshub: 'RSSHub' };
@@ -37,8 +37,15 @@ const sampleImportJson = JSON.stringify([
 export default function Sources() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
+  // Category state
+  const [categories, setCategories] = useState<SourceCategory[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState<{ id: number; name: string } | null>(null);
+
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', source_type: 'rss', url: '', description: '', tags: '', cookies: '' });
+  const [form, setForm] = useState({ name: '', source_type: 'rss', url: '', description: '', tags: '', cookies: '', category_id: '' });
   const [rsshubPreset, setRsshubPreset] = useState<string>('');
   const [rsshubId, setRsshubId] = useState('');
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -56,7 +63,34 @@ export default function Sources() {
   const [importResult, setImportResult] = useState<{ message: string; errors: { index: number; name: string; error: string }[] } | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => { loadSources(); loadSettings(); }, []);
+  useEffect(() => { loadSources(); loadSettings(); loadCategories(); }, []);
+
+  const loadCategories = async () => {
+    try { setCategories(await sourceCategoriesApi.list()); }
+    catch { /* ignore */ }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    await sourceCategoriesApi.create({ name: newCategoryName.trim() });
+    setNewCategoryName('');
+    loadCategories();
+  };
+
+  const handleUpdateCategory = async (id: number, name: string) => {
+    if (!name.trim()) return;
+    await sourceCategoriesApi.update(id, { name: name.trim() });
+    setEditingCategory(null);
+    loadCategories();
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm('确定要删除这个分类吗？\n属于该分类的信息源将变为未分类。')) return;
+    await sourceCategoriesApi.delete(id);
+    if (categoryFilter === id) setCategoryFilter(null);
+    loadCategories();
+  };
+
 
   const loadSettings = async () => {
     try {
@@ -88,6 +122,7 @@ export default function Sources() {
     const data: Record<string, unknown> = {
       ...form,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
+      category_id: form.category_id ? parseInt(form.category_id) : null,
     };
     if (form.source_type === 'xueqiu' && form.cookies) {
       data.config = { cookies: form.cookies };
@@ -95,7 +130,7 @@ export default function Sources() {
     delete data.cookies;
     await sourcesApi.create(data);
     setShowForm(false);
-    setForm({ name: '', source_type: 'rss', url: '', description: '', tags: '', cookies: '' });
+    setForm({ name: '', source_type: 'rss', url: '', description: '', tags: '', cookies: '', category_id: '' });
     setRsshubPreset('');
     setRsshubId('');
     loadSources();
@@ -243,6 +278,106 @@ export default function Sources() {
           >
             退出
           </button>
+        </div>
+      )}
+
+      {/* 分类过滤 & 管理 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setCategoryFilter(null)}
+          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            categoryFilter === null
+              ? 'bg-blue-500 text-white'
+              : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
+          }`}
+        >
+          全部
+        </button>
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setCategoryFilter(cat.id === categoryFilter ? null : cat.id)}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+              categoryFilter === cat.id
+                ? 'bg-blue-500 text-white'
+                : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
+            }`}
+          >
+            {cat.name}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowCategoryManager(!showCategoryManager)}
+          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            showCategoryManager
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
+          }`}
+        >
+          管理分类
+        </button>
+      </div>
+
+      {/* 分类管理面板 */}
+      {showCategoryManager && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-200 dark:border-slate-700">
+          <h3 className="font-semibold text-slate-800 dark:text-white mb-3">分类管理</h3>
+          <div className="flex gap-2 mb-4">
+            <input
+              value={newCategoryName}
+              onChange={e => setNewCategoryName(e.target.value)}
+              placeholder="新分类名称"
+              className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm"
+              onKeyDown={e => { if (e.key === 'Enter') handleCreateCategory(); }}
+            />
+            <button
+              onClick={handleCreateCategory}
+              disabled={!newCategoryName.trim()}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50 transition-colors"
+            >
+              添加
+            </button>
+          </div>
+          <div className="space-y-2">
+            {categories.map(cat => (
+              <div key={cat.id} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                {editingCategory?.id === cat.id ? (
+                  <div className="flex items-center gap-2 flex-1 mr-2">
+                    <input
+                      value={editingCategory.name}
+                      onChange={e => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                      className="flex-1 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-sm"
+                      autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') handleUpdateCategory(cat.id, editingCategory.name); }}
+                    />
+                    <button onClick={() => handleUpdateCategory(cat.id, editingCategory.name)} className="text-xs text-blue-500 hover:text-blue-700">保存</button>
+                    <button onClick={() => setEditingCategory(null)} className="text-xs text-slate-400 hover:text-slate-600">取消</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{cat.name}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingCategory({ id: cat.id, name: cat.name })}
+                        className="text-xs text-blue-500 hover:text-blue-700"
+                      >
+                        重命名
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(cat.id)}
+                        className="text-xs text-red-500 hover:text-red-700"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+            {categories.length === 0 && (
+              <p className="text-sm text-slate-400 text-center py-4">暂无分类，添加一个吧</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -514,6 +649,17 @@ export default function Sources() {
               <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">分类</label>
+              <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm"
+              >
+                <option value="">未分类</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
             {form.source_type === 'xueqiu' && (
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">
@@ -535,7 +681,7 @@ export default function Sources() {
       )}
 
       <div className="grid gap-4">
-        {sources.map((s) => {
+        {(categoryFilter ? sources.filter(s => s.category_id === categoryFilter) : sources).map((s) => {
           const Icon = typeIcons[s.source_type] || Rss;
           const isExpanded = expandedId === s.id;
           const isSelected = selectedIds.has(s.id);
@@ -574,6 +720,11 @@ export default function Sources() {
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium text-slate-800 dark:text-white">{s.name}</h3>
                       <span className="text-xs bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 rounded">{typeLabels[s.source_type] || s.source_type}</span>
+                      {s.category_id && categories.find(c => c.id === s.category_id) && (
+                        <span className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-0.5 rounded">
+                          {categories.find(c => c.id === s.category_id)!.name}
+                        </span>
+                      )}
                       {s.tags?.map(t => (
                         <span key={t} className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500">{t}</span>
                       ))}
@@ -671,11 +822,20 @@ export default function Sources() {
             </div>
           );
         })}
-        {sources.length === 0 && (
+        {(categoryFilter ? sources.filter(s => s.category_id === categoryFilter) : sources).length === 0 && (
           <div className="text-center py-16 text-slate-400">
             <Rss className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>还没有配置信息源</p>
-            <p className="text-sm mt-1">点击上方按钮添加 RSS 或网页信息源</p>
+            {sources.length === 0 ? (
+              <>
+                <p>还没有配置信息源</p>
+                <p className="text-sm mt-1">点击上方按钮添加 RSS 或网页信息源</p>
+              </>
+            ) : (
+              <>
+                <p>当前分类下没有信息源</p>
+                <p className="text-sm mt-1">试试切换分类或取消筛选</p>
+              </>
+            )}
           </div>
         )}
       </div>

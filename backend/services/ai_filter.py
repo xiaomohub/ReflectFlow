@@ -2,7 +2,7 @@
 
 核心功能：
 1. 对原始文章进行智能过滤和排序（结合用户领域上下文）
-2. 为决策提供 AI 建议
+2. 为决策提供 AI 建议（含历史决策参考）
 3. 生成文章摘要和行动建议
 """
 
@@ -245,7 +245,7 @@ class AIFilterService:
                             article.relevance_score = min(1.0, article.relevance_score + 0.2)
                             article.relevance_reason += f" [重要人物提及]"
                             if old_score != article.relevance_score:
-                                print(f"[filter] 重要人物提权: #{article.id} 评分 {old_score}→{article.relevance_score}")
+                                print(f"[filter] 重要人物提权: #{article.id} 评分 {old_score}->{article.relevance_score}")
                             break
 
             self.db.commit()
@@ -275,15 +275,99 @@ class AIFilterService:
 
         return []
 
+    def _parse_llm_response_dict(self, content: str) -> dict:
+        """解析 LLM 的 JSON 对象响应"""
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1]
+            content = content.rsplit("```", 1)[0]
+        content = content.strip()
+
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试找到 JSON 对象
+        try:
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            if start >= 0 and end > start:
+                return json.loads(content[start:end])
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        return {}
+
     def get_decision_advice(self, title: str, context: str,
-                            options: list[dict], related_domains: list[str]) -> dict:
-        """获取 AI 决策建议"""
+                            options: list[dict], related_domains: list[str],
+                            previous_decision_ids: list[int] | None = None) -> dict:
+        """获取 AI 决策建议（含历史决策参考 + 决策链上下文）"""
         if not self.api_key:
             return {
                 "advice": "AI 决策建议功能需要配置 LLM_API_KEY。建议根据直觉做决策，并设定复盘周期。",
                 "recommended_option": None,
-                "analysis": "LLM 未配置"
+                "analysis": "LLM 未配置",
+                "risk_warnings": [],
             }
+
+        # 获取决策链上下文（上游决策）
+        chain_decisions = []
+        if previous_decision_ids:
+            from models.models import Decision
+            chain_decisions = (
+                self.db.query(Decision)
+                .filter(Decision.id.in_(previous_decision_ids))
+                .order_by(Decision.created_at.asc())
+                .all()
+            )
+
+        # 获取历史决策参考（同领域最近 5 条）
+        past_decisions = []
+        if related_domains:
+            from models.models import Decision
+            for domain in related_domains:
+                past = (
+                    self.db.query(Decision)
+                    .filter(
+                        Decision.related_domains.contains(domain),
+                        Decision.status.in_(["completed", "abandoned"]),
+                    )
+                    .order_by(Decision.updated_at.desc())
+                    .limit(5)
+                    .all()
+                )
+                past_decisions.extend(past)
+
+        history_text = ""
+        if past_decisions:
+            history_lines = []
+            seen = set()
+            for d in past_decisions:
+                if d.id in seen:
+                    continue
+                seen.add(d.id)
+                history_lines.append(
+                    f"- 决策: {d.title} | 状态: {d.status} | "
+                    f"选择: {d.chosen_option or '无'} | "
+                    f"信心: {d.confidence_score}/10 | "
+                    f"理由: {d.rationale[:200] if d.rationale else '无'}"
+                )
+            if history_lines:
+                history_text = "## 历史相关决策参考\n" + "\n".join(history_lines[:5])
+
+        # 构建决策链上下文
+        chain_text = ""
+        if chain_decisions:
+            chain_lines = []
+            for d in chain_decisions:
+                chain_lines.append(
+                    f"- [{d.created_at.strftime('%Y-%m-%d')}] {d.title}\n"
+                    f"  背景: {d.context[:200] if d.context else '无'}\n"
+                    f"  选择: {d.chosen_option or '无'} | "
+                    f"理由: {d.rationale[:200] if d.rationale else '无'}"
+                )
+            chain_text = "## 上游决策链（串联事件）\n" + "\n".join(chain_lines)
 
         options_text = "\n".join(
             f"- {opt.get('name', '选项')}: 优点: {', '.join(opt.get('pros', []))} | "
@@ -302,20 +386,26 @@ class AIFilterService:
 ## 关联领域
 {', '.join(related_domains)}
 
+{chain_text}
+
+{history_text}
+
 ## 考虑选项
 {options_text if options_text else "暂无选项"}
 
 请从以下角度分析：
 1. 各选项的优劣比较
 2. 结合用户关注领域的建议
-3. 风险提示
-4. 推荐选项及理由
+3. 参考上游决策链和历史相关决策的经验教训
+4. 风险提示
+5. 推荐选项及理由
 
 返回 JSON 格式：
 {{
-    "analysis": "详细分析...",
+    "analysis": "详细分析（300字以内）...",
     "recommended_option": "推荐选项名称",
-    "advice": "一段精炼的建议..."
+    "advice": "一段精炼的建议（50字以内）...",
+    "risk_warnings": ["风险1", "风险2"]
 }}
 只返回 JSON。"""
 
@@ -336,12 +426,22 @@ class AIFilterService:
             )
             result = response.json()
             content = result["choices"][0]["message"]["content"]
-            return self._parse_llm_response(content) or {
-                "analysis": content, "advice": content, "recommended_option": None
+            parsed = self._parse_llm_response_dict(content)
+            if parsed:
+                return {
+                    "analysis": parsed.get("analysis", content),
+                    "advice": parsed.get("advice", content),
+                    "recommended_option": parsed.get("recommended_option"),
+                    "risk_warnings": parsed.get("risk_warnings", []),
+                }
+            return {
+                "analysis": content, "advice": content,
+                "recommended_option": None, "risk_warnings": [],
             }
         except Exception as e:
             return {
                 "advice": f"AI 分析失败: {e}",
                 "recommended_option": None,
-                "analysis": str(e)
+                "analysis": str(e),
+                "risk_warnings": [],
             }
