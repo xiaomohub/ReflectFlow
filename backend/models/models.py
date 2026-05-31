@@ -13,6 +13,7 @@ class AppUser(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True, comment="登录名/唯一标识")
+    password_hash = Column(String(128), nullable=False, default="", comment="密码哈希")
     display_name = Column(String(200), nullable=False, comment="显示名称")
     role = Column(String(20), default="normal", comment="角色：admin/normal")
     is_active = Column(Boolean, default=True, comment="是否启用")
@@ -106,7 +107,17 @@ class Decision(Base):
     root_decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=True, index=True, comment="树根决策")
     node_order = Column(Integer, default=0, comment="同层顺序")
     related_domains = Column(JSON, default=list, comment="关联领域")
-    children = relationship("Decision", backref="parent", remote_side="Decision.id", viewonly=True)
+    parent = relationship(
+        "Decision",
+        foreign_keys=[parent_decision_id],
+        remote_side=[id],
+        back_populates="children",
+    )
+    children = relationship(
+        "Decision",
+        foreign_keys=[parent_decision_id],
+        back_populates="parent",
+    )
 
     # 决策选项
     options = Column(JSON, default=list, comment="考虑的选项列表 [{name, pros, cons, score}]")

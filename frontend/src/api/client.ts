@@ -1,31 +1,42 @@
 /** API 客户端 - 与后端 FastAPI 交互 */
 
 const BASE = '';  // 通过 Vite proxy 代理
-const CURRENT_USER_KEY = 'rf_current_user_id';
+const AUTH_TOKEN_KEY = 'rf_auth_token';
 
-export function getCurrentUserId(): number {
-  if (typeof window === 'undefined') return 1;
-  const raw = window.localStorage.getItem(CURRENT_USER_KEY);
-  const parsed = raw ? Number(raw) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+export function getAuthToken(): string {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(AUTH_TOKEN_KEY) || '';
 }
 
-export function setCurrentUserId(userId: number) {
+export function hasAuthToken(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(window.localStorage.getItem(AUTH_TOKEN_KEY));
+}
+
+export function setAuthToken(token: string) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(CURRENT_USER_KEY, String(userId));
+  window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearAuthToken() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const currentUserId = getCurrentUserId();
+  const token = getAuthToken();
   const res = await fetch(`${BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      'X-User-Id': String(currentUserId),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
     ...options,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      clearAuthToken();
+    }
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || `HTTP ${res.status}`);
   }
@@ -43,12 +54,36 @@ export interface AppUser {
   updated_at: string;
 }
 
+export interface AppUserLoginResult {
+  token: string;
+  token_type: 'bearer';
+  expires_in: number;
+  user: AppUser;
+}
+
+export interface AppUserCreatePayload {
+  username: string;
+  display_name: string;
+  role?: 'admin' | 'normal';
+  is_active?: boolean;
+  password?: string;
+}
+
+export interface AppUserUpdatePayload {
+  display_name?: string;
+  role?: 'admin' | 'normal';
+  is_active?: boolean;
+  password?: string;
+}
+
 export const usersApi = {
   me: () => request<AppUser>('/api/users/me'),
   active: () => request<AppUser[]>('/api/users/active'),
+  login: (username: string, password: string) =>
+    request<AppUserLoginResult>('/api/users/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   list: () => request<AppUser[]>('/api/users/'),
-  create: (data: Partial<AppUser>) => request<AppUser>('/api/users/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: number, data: Partial<AppUser>) => request<AppUser>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  create: (data: AppUserCreatePayload) => request<AppUser>('/api/users/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: AppUserUpdatePayload) => request<AppUser>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 // ===== 信息源 =====

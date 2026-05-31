@@ -8,6 +8,7 @@ from pydantic import BaseModel
 # ===== 人员与权限 =====
 class AppUserCreate(BaseModel):
     username: str
+    password: str = "ChangeMe123!"
     display_name: str
     role: str = "normal"
     is_active: bool = True
@@ -17,6 +18,17 @@ class AppUserUpdate(BaseModel):
     display_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+class AppUserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AppUserChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
 
 
 class AppUserResponse(BaseModel):
@@ -30,6 +42,13 @@ class AppUserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AppUserLoginResponse(BaseModel):
+    token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: AppUserResponse
 
 
 # ===== 信息源 =====

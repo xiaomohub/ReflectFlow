@@ -146,6 +146,7 @@ def init_db():
                     CREATE TABLE app_users (
                         id INTEGER PRIMARY KEY,
                         username VARCHAR(100) NOT NULL UNIQUE,
+                        password_hash VARCHAR(128) NOT NULL DEFAULT '',
                         display_name VARCHAR(200) NOT NULL,
                         role VARCHAR(20) DEFAULT 'normal',
                         is_active BOOLEAN DEFAULT 1,
@@ -155,7 +156,16 @@ def init_db():
                 """))
                 conn.commit()
 
-        # 初始化默认管理员
+        # 迁移11.1: app_users.password_hash
+        app_user_cols = [c["name"] for c in inspect(engine).get_columns("app_users")]
+        if "password_hash" not in app_user_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE app_users ADD COLUMN password_hash VARCHAR(128) DEFAULT ''"))
+                conn.commit()
+
+        # 初始化默认人员（admin + user）
+        admin_hash = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"  # admin123
+        user_hash = "e606e38b0d8c19b24cf0ee3808183162ea7cd63ff7912dbb22b5e803286b4446"  # user123
         with engine.connect() as conn:
             admin_exists = conn.execute(
                 text("SELECT id FROM app_users WHERE username='admin' LIMIT 1")
@@ -163,11 +173,38 @@ def init_db():
             if not admin_exists:
                 conn.execute(
                     text(
-                        "INSERT INTO app_users (username, display_name, role, is_active, created_at, updated_at) "
-                        "VALUES ('admin', '系统管理员', 'admin', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                        "INSERT INTO app_users (username, password_hash, display_name, role, is_active, created_at, updated_at) "
+                        "VALUES ('admin', :admin_hash, '系统管理员', 'admin', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
                     )
+                    .bindparams(admin_hash=admin_hash)
                 )
-                conn.commit()
+
+            user_exists = conn.execute(
+                text("SELECT id FROM app_users WHERE username='user' LIMIT 1")
+            ).first()
+            if not user_exists:
+                conn.execute(
+                    text(
+                        "INSERT INTO app_users (username, password_hash, display_name, role, is_active, created_at, updated_at) "
+                        "VALUES ('user', :user_hash, '默认普通人员', 'normal', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                    )
+                    .bindparams(user_hash=user_hash)
+                )
+
+            # 历史数据兼容：补齐空密码
+            conn.execute(
+                text("UPDATE app_users SET password_hash=:admin_hash WHERE username='admin' AND (password_hash IS NULL OR password_hash='')")
+                .bindparams(admin_hash=admin_hash)
+            )
+            conn.execute(
+                text("UPDATE app_users SET password_hash=:user_hash WHERE username='user' AND (password_hash IS NULL OR password_hash='')")
+                .bindparams(user_hash=user_hash)
+            )
+            conn.execute(
+                text("UPDATE app_users SET password_hash=:user_hash WHERE (password_hash IS NULL OR password_hash='')")
+                .bindparams(user_hash=user_hash)
+            )
+            conn.commit()
 
         # 迁移12: owner_user_id 列（按人员隔离）
         def ensure_owner_column(table_name: str):

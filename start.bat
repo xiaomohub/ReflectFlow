@@ -1,82 +1,69 @@
 @echo off
-chcp 65001 >nul
-title 个人复盘系统 - 一键启动
+setlocal
+title ReflectFlow One-Click Start
 echo ============================================
-echo   个人复盘系统 - 一键启动
+echo ReflectFlow One-Click Start
 echo ============================================
 echo.
 
-:: 检查 Python
-python --version >nul 2>&1
+where python >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [错误] 未检测到 Python，请先安装 Python 3.10+
+    echo [ERROR] Python not found. Install Python 3.10+ first.
     pause
     exit /b 1
 )
-echo [OK] Python 已安装
+echo [OK] Python found.
 
-:: 检查 Node.js
-node --version >nul 2>&1
+where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [错误] 未检测到 Node.js，请先安装 Node.js 18+
+    echo [ERROR] Node.js not found. Install Node.js 18+ first.
     pause
     exit /b 1
 )
-echo [OK] Node.js 已安装
+echo [OK] Node.js found.
 
 echo.
-echo --- 1. 初始化后端依赖 ---
+echo [1/3] Setup backend dependencies
 cd /d "%~dp0backend"
-
-:: 创建虚拟环境（如果不存在）
-if not exist "venv" (
-    echo [..] 创建 Python 虚拟环境...
+if not exist "venv\Scripts\python.exe" (
+    echo Creating backend virtual environment...
     python -m venv venv
 )
-
-:: 安装依赖
-echo [..] 安装后端依赖...
-call venv\Scripts\python -m pip install -r requirements.txt -q
-echo [OK] 后端依赖安装完成
-
-echo.
-echo --- 2. 初始化前端依赖 ---
-cd /d "%~dp0frontend"
-if not exist "node_modules" (
-    echo [..] 安装前端依赖...
-    call npm install
-    echo [OK] 前端依赖安装完成
-) else (
-    echo [OK] 前端依赖已安装
+echo Installing backend requirements...
+call venv\Scripts\python -m pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo [ERROR] Backend dependency install failed.
+    pause
+    exit /b 1
 )
 
 echo.
-echo --- 3. 启动服务 ---
-echo.
-echo [..] 启动后端服务 (http://localhost:8000)
-cd /d "%~dp0backend"
-start "后端服务" cmd /c "call venv\Scripts\python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
-
-echo [..] 启动前端服务 (http://localhost:5173)
+echo [2/3] Setup frontend dependencies
 cd /d "%~dp0frontend"
-start "前端服务" cmd /c "npm run dev"
+if not exist "node_modules" (
+    echo Installing frontend dependencies...
+    call npm install
+    if %errorlevel% neq 0 (
+        echo [ERROR] Frontend dependency install failed.
+        pause
+        exit /b 1
+    )
+) else (
+    echo Frontend dependencies already exist.
+)
 
 echo.
-echo ============================================
-echo   启动完成！
-echo.
-echo   前端地址: http://localhost:5173
-echo   后端地址: http://localhost:8000
-echo   API 文档: http://localhost:8000/docs
-echo.
-echo   关闭页面后请按任意键停止所有服务...
-echo ============================================
-echo.
-pause >nul
+echo [3/3] Start backend and frontend
+cd /d "%~dp0backend"
+start "ReflectFlow Backend" cmd /k "call venv\Scripts\python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+cd /d "%~dp0frontend"
+start "ReflectFlow Frontend" cmd /k "npm run dev"
 
-:: 关闭启动的窗口
-echo [..] 正在停止服务...
-taskkill /fi "windowtitle eq 后端服务" /f >nul 2>&1
-taskkill /fi "windowtitle eq 前端服务" /f >nul 2>&1
-echo [OK] 服务已停止
+echo.
+echo Started successfully:
+echo Frontend: http://localhost:5173
+echo Backend:  http://localhost:8000
+echo API Docs: http://localhost:8000/docs
+echo.
+echo Close this window anytime. Services keep running in their own windows.
 pause

@@ -5,6 +5,7 @@ import type { AppUser } from '../api/client';
 
 type NewUserForm = {
   username: string;
+  password: string;
   display_name: string;
   role: 'admin' | 'normal';
 };
@@ -17,6 +18,7 @@ export default function Users() {
   const [showCreate, setShowCreate] = useState(false);
   const [newUser, setNewUser] = useState<NewUserForm>({
     username: '',
+    password: '123456',
     display_name: '',
     role: 'normal',
   });
@@ -45,10 +47,11 @@ export default function Users() {
     try {
       await usersApi.create({
         username: newUser.username.trim(),
+        password: newUser.password.trim(),
         display_name: newUser.display_name.trim(),
         role: newUser.role,
       });
-      setNewUser({ username: '', display_name: '', role: 'normal' });
+      setNewUser({ username: '', password: '123456', display_name: '', role: 'normal' });
       setShowCreate(false);
       await load();
     } catch (e) {
@@ -108,11 +111,17 @@ export default function Users() {
 
       {showCreate && (
         <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <input
               value={newUser.username}
               onChange={(e) => setNewUser((v) => ({ ...v, username: e.target.value }))}
               placeholder="用户名（唯一）"
+              className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm"
+            />
+            <input
+              value={newUser.password}
+              onChange={(e) => setNewUser((v) => ({ ...v, password: e.target.value }))}
+              placeholder="初始密码"
               className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm"
             />
             <input

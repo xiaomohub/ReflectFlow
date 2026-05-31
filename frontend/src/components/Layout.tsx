@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Rss, Inbox, GitBranch, Brain, RefreshCw, FileText, Shield,
+  LayoutDashboard, LogOut, Rss, Inbox, GitBranch, Brain, RefreshCw, FileText, Shield,
 } from 'lucide-react';
-import { getCurrentUserId, setCurrentUserId, usersApi } from '../api/client';
+import { clearAuthToken, usersApi } from '../api/client';
 import type { AppUser } from '../api/client';
 
 const navItems = [
@@ -14,34 +14,29 @@ const navItems = [
   { to: '/contexts', icon: Brain, label: '关注领域' },
   { to: '/decisions', icon: GitBranch, label: '决策管理' },
   { to: '/review', icon: RefreshCw, label: '待复盘' },
-  { to: '/users', icon: Shield, label: '权限管理', adminOnly: true },
+  { to: '/users', icon: Shield, label: '权限管理' },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [users, setUsers] = useState<AppUser[]>([]);
   const [me, setMe] = useState<AppUser | null>(null);
-  const [selectedId, setSelectedId] = useState<number>(getCurrentUserId());
+  const [loadingMe, setLoadingMe] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const loadUsers = async () => {
+  const loadMe = async () => {
+    setLoadingMe(true);
+    setLoadError('');
     try {
       const current = await usersApi.me();
-      const activeUsers = await usersApi.active();
       setMe(current);
-
-      const inList = activeUsers.some((u) => u.id === selectedId);
-      if (!inList) {
-        setSelectedId(current.id);
-        setCurrentUserId(current.id);
-      }
-      setUsers(activeUsers);
-    } catch {
-      setUsers([]);
-      setMe(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : '加载当前人员失败');
+    } finally {
+      setLoadingMe(false);
     }
   };
 
   useEffect(() => {
-    loadUsers();
+    loadMe();
   }, []);
 
   const visibleNav = navItems.filter((item) => !item.adminOnly || me?.role === 'admin');
@@ -59,25 +54,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="px-4 pt-4">
           <label className="block text-xs text-slate-400 mb-1.5">当前人员</label>
-          <select
-            value={selectedId}
-            onChange={async (e) => {
-              const nextId = Number(e.target.value);
-              setSelectedId(nextId);
-              setCurrentUserId(nextId);
-              setMe(null);
-              window.location.reload();
+          <div className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm min-h-10 flex items-center">
+            {loadingMe ? "加载中..." : me ? `${me.display_name}（${me.role === "admin" ? "管理员" : "普通人员"}）` : "未登录"}
+          </div>
+          {loadError && (
+            <p className="text-[11px] text-red-500 mt-1">{loadError}</p>
+          )}
+          <button
+            onClick={() => {
+              clearAuthToken();
+              window.location.href = '/login';
             }}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm disabled:opacity-60"
-            disabled={users.length === 0}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-700 rounded-lg transition-colors"
           >
-            {users.length === 0 && <option value={selectedId}>加载中...</option>}
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.display_name}（{u.role === 'admin' ? '管理员' : '普通人员'}）
-              </option>
-            ))}
-          </select>
+            <LogOut className="w-3.5 h-3.5" />
+            退出登录
+          </button>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {visibleNav.map((item) => (

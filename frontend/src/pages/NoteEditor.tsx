@@ -116,6 +116,7 @@ export default function NoteEditor() {
         navigate(`/notes/${note.id}`, { replace: true });
       } else {
         await notesApi.update(Number(id), data);
+        setIsBodyEditing(false);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '保存失败，请重试';
@@ -310,6 +311,16 @@ export default function NoteEditor() {
                   ref={markdownInputRef}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
+                  onBlur={(event) => {
+                    const next = event.relatedTarget as Node | null;
+                    if (next && editorWrapRef.current?.contains(next)) return;
+                    setTimeout(() => {
+                      const active = document.activeElement;
+                      if (!active || !editorWrapRef.current?.contains(active)) {
+                        setIsBodyEditing(false);
+                      }
+                    }, 0);
+                  }}
                   className="note-markdown-input w-full"
                   placeholder={'直接写 Markdown：\n\n### 标题\n\n```js\nconsole.log("hello")\n```\n'}
                 />
